@@ -1,4 +1,5 @@
 ---
 sidebar_position: 1
 ---
-中文 Intro
+
+# 翻译你的插件
