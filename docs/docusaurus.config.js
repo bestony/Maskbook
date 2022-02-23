@@ -8,7 +8,7 @@ const darkCodeTheme = require('prism-react-renderer/themes/dracula');
 const config = {
   title: 'Maskbook Dveloper Dcoumentation',
   tagline: 'Maskbook are cool',
-  url: 'https://dimensiondev.github.io/maskbook',
+  url: 'https://dimensiondev.github.io',
   baseUrl: '/',
   onBrokenLinks: 'throw',
   onBrokenMarkdownLinks: 'warn',
@@ -38,10 +38,29 @@ const config = {
       }),
     ],
   ],
-
+  i18n: {
+    defaultLocale: 'en',
+    locales: ['en', 'zh'],
+    localeConfigs: {
+      en: {
+        htmlLang: 'en-GB',
+      },
+      zh:{
+        htmlLang: 'zh-Hans'
+      }
+    },
+  },
   themeConfig:
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
     ({
+      announcementBar: {
+      id: 'support_us',
+      content:
+        'We are hiring, please contact us by  <a target="_blank" rel="noopener noreferrer" href="mailto:job@mask.io">job@mask.io</a>',
+      backgroundColor: '#2563eb',
+      textColor: '#fff',
+      isCloseable: true,
+    },
       navbar: {
         title: 'Maskbook Dveloper Dcoumentation',
         logo: {
@@ -59,6 +78,10 @@ const config = {
           {
             href: 'https://github.com/facebook/docusaurus',
             label: 'GitHub',
+            position: 'right',
+          },
+          {
+            type: 'localeDropdown',
             position: 'right',
           },
         ],
@@ -80,15 +103,19 @@ const config = {
             items: [
               {
                 label: 'Stack Overflow',
-                href: 'https://stackoverflow.com/questions/tagged/docusaurus',
+                href: 'https://stackoverflow.com/questions/tagged/maskbook',
+              },
+               {
+                label: 'Telegram',
+                href: 'https://t.me/maskbook_group',
               },
               {
                 label: 'Discord',
-                href: 'https://discordapp.com/invite/docusaurus',
+                href: 'http://discord.gg/masknetwork',
               },
               {
                 label: 'Twitter',
-                href: 'https://twitter.com/docusaurus',
+                href: 'https://twitter.com/realMaskNetwork',
               },
             ],
           },
@@ -101,7 +128,7 @@ const config = {
               },
               {
                 label: 'GitHub',
-                href: 'https://github.com/facebook/docusaurus',
+                href: 'https://github.com/DimensionDev/Maskbook',
               },
             ],
           },
