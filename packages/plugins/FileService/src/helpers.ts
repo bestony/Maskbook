@@ -1,7 +1,7 @@
 import urlcat from 'urlcat'
 import { isNil } from 'lodash-es'
 import type { Result } from 'ts-results-es'
-import isAfter from 'date-fns/isAfter'
+import { isAfter } from 'date-fns'
 import { encodeArrayBuffer, encodeText } from '@masknet/kit'
 import { createLookupTableResolver } from '@masknet/shared-base'
 import { openWindow } from '@masknet/shared-base-ui'
@@ -9,20 +9,20 @@ import type { TypedMessage } from '@masknet/typed-message'
 import { createTypedMessageMetadataReader } from '@masknet/typed-message-react'
 import { META_KEY_1, META_KEY_2, META_KEY_3, RECOVERY_PAGE } from './constants.js'
 import { type FileInfo, type FileInfoV1, Provider } from './types.js'
-import schemaV1 from './schema-v1.json'
-import schemaV2 from './schema-v2.json'
-import schemaV3 from './schema-v3.json'
+import schemaV1 from './schema-v1.json' with { type: 'json' }
+import schemaV2 from './schema-v2.json' with { type: 'json' }
+import schemaV3 from './schema-v3.json' with { type: 'json' }
 
-// Note: if the latest version has been changed, please update packages/mask/src/components/CompositionDialog/useSubmit.ts
+// Note: if the latest version has been changed, please update packages/mask/content-script/components/CompositionDialog/useSubmit.ts
 const reader_v1 = createTypedMessageMetadataReader<FileInfoV1>(META_KEY_1, schemaV1)
 const reader_v2 = createTypedMessageMetadataReader<FileInfo>(META_KEY_2, schemaV2)
 const reader_v3 = createTypedMessageMetadataReader<FileInfo[]>(META_KEY_3, schemaV3)
 
-export function FileInfoMetadataReader(meta: TypedMessage['meta']): Result<FileInfo[], void> {
+export function getFileInfoMetadata(meta: TypedMessage['meta']): Result<FileInfo[], void> {
     const v3 = reader_v3(meta)
-    if (v3.ok) return v3
+    if (v3.isOk()) return v3
     const v2 = reader_v2(meta).map((info) => [info])
-    if (v2.ok) return v2
+    if (v2.isOk()) return v2
     return reader_v1(meta).map(migrateFileInfoV1)
 }
 
@@ -41,7 +41,7 @@ export async function makeFileKeySigned(fileKey: string | undefined | null) {
     return [signed, exportedKey].map(encodeArrayBuffer)
 }
 
-export const resolveGatewayAPI = createLookupTableResolver<Provider, string>(
+const resolveGatewayAPI = createLookupTableResolver<Provider, string>(
     {
         [Provider.Arweave]: 'https://arweave.net',
         [Provider.IPFS]: 'https://mask.infura-ipfs.io/ipfs',

@@ -1,11 +1,10 @@
+import { useContext, useEffect } from 'react'
 import createEmotionCache, { type EmotionCache } from '@emotion/cache'
 import { CacheProvider as EmotionCacheProvider } from '@emotion/react'
 import { StyleSheet } from './ShadowRootStyleSheet.js'
 import { PreventShadowRootEventPropagationListContext, stopPropagation, StyleSheetsContext } from './Contexts.js'
-import { useContext, useEffect } from 'react'
 
-/** @internal */
-export interface ShadowRootStyleProviderProps extends React.PropsWithChildren<{}> {
+interface ShadowRootStyleProviderProps extends React.PropsWithChildren {
     shadow: ShadowRoot
     preventPropagation: boolean
 }
@@ -24,14 +23,16 @@ export function ShadowRootStyleProvider(props: ShadowRootStyleProviderProps) {
     const preventEventPropagationList = useContext(PreventShadowRootEventPropagationListContext)
     useEffect(() => {
         if (!props.preventPropagation) return
-        preventEventPropagationList.forEach((event) => shadow.addEventListener(event, stopPropagation))
-        return () => preventEventPropagationList.forEach((event) => shadow.removeEventListener(event, stopPropagation))
+        const ac = new AbortController()
+        const signal = ac.signal
+        preventEventPropagationList.forEach((event) => shadow.addEventListener(event, stopPropagation, { signal }))
+        return () => ac.abort()
     }, [props.preventPropagation, preventEventPropagationList, shadow])
 
     return (
-        <StyleSheetsContext.Provider value={sheets}>
+        <StyleSheetsContext value={sheets}>
             <EmotionCacheProvider value={cache}>{children}</EmotionCacheProvider>
-        </StyleSheetsContext.Provider>
+        </StyleSheetsContext>
     )
 }
 
@@ -41,12 +42,13 @@ function getShadowRootEmotionCache(shadow: ShadowRoot) {
     if (styleSheetMap.has(shadow)) return styleSheetMap.get(shadow)!
 
     // emotion doesn't allow numbers appears in the key
-    const instanceID = Math.random().toString(36).slice(2).replace(/\d/g, 'x').slice(0, 4)
+    const instanceID = Math.random().toString(36).slice(2).replaceAll(/\d/g, 'x').slice(0, 4)
     const key = 'css-' + instanceID
 
-    // https://github.com/emotion-js/emotion/issues/2933
-    const muiEmotionCache = (createEmotionCache.default || createEmotionCache)({ key })
+    const muiEmotionCache = createEmotionCache({ key })
     const muiStyleSheet = new StyleSheet({ key, container: shadow })
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-expect-error
     muiEmotionCache.sheet = muiStyleSheet
 
     styleSheetMap.set(shadow, [muiEmotionCache, muiStyleSheet])

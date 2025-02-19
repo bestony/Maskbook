@@ -1,18 +1,16 @@
 import { memo } from 'react'
-import { Stack, Typography } from '@mui/material'
+import { Stack, Typography, type StackProps } from '@mui/material'
 import { Icons } from '@masknet/icons'
 import type { SecurityAPI } from '@masknet/web3-providers/types'
 import { CrossIsolationMessages } from '@masknet/shared-base'
-import { useSharedI18N } from '../../../locales/index.js'
 import { DefineMapping, SecurityMessageLevel } from './Common.js'
+import { Plural, Trans } from '@lingui/react/macro'
 
 interface TokenCardProps {
     tokenSecurity: SecurityAPI.TokenSecurityType
 }
 
 export const TokenSecurityBar = memo<TokenCardProps>(({ tokenSecurity }) => {
-    const t = useSharedI18N()
-
     const { warn_item_quantity: attentionFactors = 0, risk_item_quantity: riskyFactors = 0 } = tokenSecurity
 
     const handleOpenDialog = () => {
@@ -39,9 +37,7 @@ export const TokenSecurityBar = memo<TokenCardProps>(({ tokenSecurity }) => {
                         component="span"
                         fontSize="12px"
                         color={DefineMapping[SecurityMessageLevel.High].titleColor}>
-                        {riskyFactors > 1
-                            ? t.risky_items({ quantity: riskyFactors.toString() })
-                            : t.risky_item({ quantity: riskyFactors.toString() })}
+                        <Plural one="# Risky item" other="# Risky items" value={riskyFactors} />
                     </Typography>
                 </Stack>
             )}
@@ -58,9 +54,7 @@ export const TokenSecurityBar = memo<TokenCardProps>(({ tokenSecurity }) => {
                         component="span"
                         fontSize="12px"
                         color={DefineMapping[SecurityMessageLevel.Medium].titleColor}>
-                        {attentionFactors > 1
-                            ? t.attention_items({ quantity: attentionFactors.toString() })
-                            : t.attention_item({ quantity: attentionFactors.toString() })}
+                        <Plural one="# Attention item" other="# Attention items" value={attentionFactors} />
                     </Typography>
                 </Stack>
             )}
@@ -75,11 +69,29 @@ export const TokenSecurityBar = memo<TokenCardProps>(({ tokenSecurity }) => {
                     onClick={handleOpenDialog}
                     spacing={0.5}>
                     <Typography component="span" fontSize="12px" color="#1C68F3">
-                        {t.more()}
+                        <Trans>More</Trans>
                     </Typography>
                     <Icons.RightArrow size={14} color="#1C68F3" />
                 </Stack>
             )}
+        </Stack>
+    )
+})
+
+export const NFTSpamBadge = memo(function NFTSpamBadge(props: StackProps) {
+    return (
+        <Stack
+            direction="row"
+            alignItems="center"
+            borderRadius="4px"
+            padding="4px 8px"
+            bgcolor={DefineMapping[SecurityMessageLevel.High].bgColor}
+            spacing={0.5}
+            {...props}>
+            {DefineMapping[SecurityMessageLevel.High].icon(14)}
+            <Typography component="span" fontSize="12px" color={DefineMapping[SecurityMessageLevel.High].titleColor}>
+                <Trans>Spam</Trans>
+            </Typography>
         </Stack>
     )
 })

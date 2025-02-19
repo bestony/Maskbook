@@ -1,56 +1,56 @@
 {
   "name": "@masknet/theme",
+  "sideEffects": false,
   "private": true,
-  "description": "@mui/material theme of design system of Mask Network",
+  "description": "@mui/material theme of the design system of Mask Network",
   "type": "module",
   "exports": {
     ".": {
-      "types": "./dist/src/entry.d.ts",
-      "mask-src": "./src/entry.ts",
-      "default": "./dist/src/entry.d.ts"
-    },
-    "./base": {
-      "types": "./dist/src/entry-base.d.ts",
-      "mask-src": "./src/entry-base.ts",
-      "default": "./dist/src/entry-base.js"
+      "types": "./dist/index.d.ts",
+      "mask-src": "./src/index.ts",
+      "default": "./dist/index.d.ts"
     }
-  },
-  "types": "./dist/src/entry.d.ts",
-  "typesVersions": {
-    "*": {
-      "base": [
-        "./dist/src/entry-base.d.ts"
-      ]
-    }
-  },
-  "scripts": {
-    "build-storybook": "build -- build-storybook",
-    "start": "dev -- start-storybook -p 6006"
   },
   "dependencies": {
+    "@masknet/flags": "workspace:^",
     "@masknet/icons": "workspace:^",
     "@masknet/shared-base": "workspace:^",
-    "@masknet/storybook-shared": "workspace:^",
-    "@types/qrcode": "^1.5.0",
-    "@types/tinycolor2": "^1.4.3",
-    "fuse.js": "6.6.2",
+    "@types/tinycolor2": "^1.4.6",
+    "fuse.js": "^7.0.0",
     "notistack": "2.0.8",
-    "react-use": "^17.4.0",
-    "react-window": "^1.8.8",
-    "tinycolor2": "^1.4.2",
-    "tss-react": "^4.4.4",
-    "unstated-next": "^1.1.0",
-    "use-subscription": "^1.8.0"
+    "react-use": "^17.5.0",
+    "react-window": "^1.8.10",
+    "tinycolor2": "^1.6.0",
+    "tss-react": "^4.9.10"
   },
   "devDependencies": {
-    "@babel/core": "^7.21.0",
-    "@storybook/addon-actions": "^6.5.13",
-    "@storybook/addon-essentials": "^6.5.13",
-    "@storybook/addon-links": "^6.5.13",
-    "@storybook/builder-webpack5": "^6.5.13",
-    "@storybook/manager-webpack5": "^6.5.13",
-    "@storybook/react": "^6.5.13",
-    "@types/react-window": "^1.8.5",
-    "babel-loader": "^9.1.2"
+    "@types/react-window": "^1.8.8"
+  },
+  "lingui": {
+    "compileNamespace": "json",
+    "locales": [
+      "en-US",
+      "ja-JP",
+      "ko-KR",
+      "zh-CN",
+      "zh-TW"
+    ],
+    "fallbackLocales": {
+      "zh-CN": "zh-TW",
+      "zh-TW": "zh-CN",
+      "default": "en-US"
+    },
+    "formatOptions": {
+      "origins": true,
+      "lineNumbers": false
+    },
+    "catalogs": [
+      {
+        "path": "./src/locale/{locale}",
+        "include": [
+          "./src/"
+        ]
+      }
+    ]
   }
 }

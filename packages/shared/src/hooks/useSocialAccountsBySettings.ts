@@ -1,54 +1,50 @@
-import { useEffect, useMemo } from 'react'
-import {
-    PluginID,
-    CrossIsolationMessages,
-    EMPTY_LIST,
-    SocialAddressType,
-    type SocialAccount,
-    type SocialIdentity,
-} from '@masknet/shared-base'
-import { useHiddenAddressSettings, useSocialAccountsAll } from '@masknet/web3-hooks-base'
+import { useCallback, useMemo } from 'react'
+import { PluginID, SocialAddressType, type SocialAccount, type SocialIdentity } from '@masknet/shared-base'
+import { useHiddenAddressConfigOf, useSocialAccountsAll } from '@masknet/web3-hooks-base'
 import { currySameAddress } from '@masknet/web3-shared-base'
 import type { Web3Helper } from '@masknet/web3-helpers'
+import type { WalletAPI } from '@masknet/web3-providers/types'
 
-export const useSocialAccountsBySettings = (
-    identity?: SocialIdentity,
-    typeWhitelist?: SocialAddressType[],
-    sorter?: (a: SocialAccount<Web3Helper.ChainIdAll>, z: SocialAccount<Web3Helper.ChainIdAll>) => number,
-) => {
-    const {
-        value: socialAccounts = EMPTY_LIST,
-        loading: loadingSocialAccounts,
-        error: loadSocialAccountsError,
-        retry: retrySocialAccounts,
-    } = useSocialAccountsAll(identity, typeWhitelist, sorter)
-    const {
-        value: hiddenAddress,
-        loading: loadingHiddenAddress,
-        error: loadingHiddenAddressError,
-        retry: retryLoadHiddenAddress,
-    } = useHiddenAddressSettings(PluginID.Web3Profile, identity?.publicKey)
+export function useSocialAccountsBySettings(
+    identity: SocialIdentity | null | undefined,
+    typeWhitelist: SocialAddressType[] | undefined,
+    sorter: ((a: SocialAccount<Web3Helper.ChainIdAll>, z: SocialAccount<Web3Helper.ChainIdAll>) => number) | undefined,
+    signWithPersona: WalletAPI.SignWithPersona,
+) {
+    const [
+        socialAccounts,
+        { isPending: loadingSocialAccounts, error: loadSocialAccountsError, refetch: refetchSocialAccounts },
+    ] = useSocialAccountsAll(identity, typeWhitelist, sorter)
+    const userId = identity?.identifier?.userId
+    const [
+        hiddenAddress,
+        {
+            isFetching: loadingHiddenAddress,
+            isLoading,
+            error: loadingHiddenAddressError,
+            refetch: refetchLoadHiddenAddress,
+        },
+    ] = useHiddenAddressConfigOf(identity?.publicKey, PluginID.Web3Profile, userId, signWithPersona)
 
     const addresses = useMemo(() => {
-        if (loadingSocialAccounts || loadingHiddenAddress) return EMPTY_LIST
-        if (!hiddenAddress?.length) return socialAccounts
+        if (!hiddenAddress || !socialAccounts) return socialAccounts
 
         return socialAccounts.filter((x) => {
             if (!x.supportedAddressTypes?.includes(SocialAddressType.NEXT_ID)) return true
             return !hiddenAddress.some(currySameAddress(x.address))
         })
-    }, [socialAccounts, hiddenAddress, loadingSocialAccounts, loadingHiddenAddress])
+    }, [socialAccounts, hiddenAddress, loadingHiddenAddress])
 
-    useEffect(() => {
-        return CrossIsolationMessages.events.walletSettingsDialogEvent.on(({ pluginID }) => {
-            if (pluginID === PluginID.Web3Profile) retryLoadHiddenAddress()
-        })
-    }, [retryLoadHiddenAddress])
+    const refetch = useCallback(() => {
+        refetchSocialAccounts()
+        refetchLoadHiddenAddress()
+    }, [])
 
     return {
-        value: addresses,
-        loading: loadingSocialAccounts || loadingHiddenAddress,
+        data: addresses,
+        isPending: loadingSocialAccounts || loadingHiddenAddress,
+        isLoading,
         error: loadSocialAccountsError || loadingHiddenAddressError,
-        retry: retrySocialAccounts || retryLoadHiddenAddress,
+        refetch,
     }
 }

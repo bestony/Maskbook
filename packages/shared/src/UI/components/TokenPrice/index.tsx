@@ -1,4 +1,4 @@
-import type { FC, HTMLProps } from 'react'
+import type { HTMLProps } from 'react'
 import type { BigNumber } from 'bignumber.js'
 import { type ChainId, isZeroAddress } from '@masknet/web3-shared-evm'
 import { CurrencyType, multipliedBy } from '@masknet/web3-shared-base'
@@ -12,22 +12,18 @@ interface TokenPriceProps extends Omit<HTMLProps<HTMLSpanElement>, 'children'> {
     currencyType?: CurrencyType
 }
 
-export const TokenPrice: FC<TokenPriceProps> = ({
+export function TokenPrice({
     chainId,
     contractAddress,
     amount,
     currencyType = CurrencyType.USD,
     ...rest
-}) => {
-    const { value: tokenPrice = 0 } = useFungibleTokenPrice(
-        NetworkPluginID.PLUGIN_EVM,
-        contractAddress?.toLowerCase(),
-        {
-            chainId,
-            currencyType,
-        },
-    )
-    const { value: nativeTokenPrice = 0 } = useNativeTokenPrice(NetworkPluginID.PLUGIN_EVM, { chainId })
+}: TokenPriceProps) {
+    const { data: tokenPrice = 0 } = useFungibleTokenPrice(NetworkPluginID.PLUGIN_EVM, contractAddress?.toLowerCase(), {
+        chainId,
+        currencyType,
+    })
+    const { data: nativeTokenPrice = 0 } = useNativeTokenPrice(NetworkPluginID.PLUGIN_EVM, { chainId })
     const price = isZeroAddress(contractAddress) ? nativeTokenPrice : tokenPrice
     return <span {...rest}>${multipliedBy(amount, price).toFixed(2)}</span>
 }

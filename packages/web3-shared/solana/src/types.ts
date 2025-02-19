@@ -1,4 +1,11 @@
-import type { PublicKey, BlockResponse, Transaction as SolanaTransaction, TransactionResponse } from '@solana/web3.js'
+import type {
+    PublicKey,
+    BlockResponse,
+    Transaction as LegacyTransaction,
+    VersionedTransaction as SolanaTransaction,
+    TransactionResponse,
+} from '@solana/web3.js'
+import type { Web3State as Web3StateShared } from '@masknet/web3-shared-base'
 
 export enum ChainId {
     Mainnet = 101,
@@ -22,13 +29,12 @@ export enum SchemaType {
 export enum NetworkType {
     Solana = 'Solana',
 }
-
 export enum ProviderType {
     None = 'None',
     Phantom = 'Phantom',
     Solflare = 'Solflare',
-    Sollet = 'Sollet',
     Coin98 = 'Coin98',
+    OKX = 'OKX',
 }
 
 // Learn more at https://docs.phantom.app/integrating/extension-and-mobile-browser/detecting-the-provider
@@ -49,6 +55,22 @@ export enum Coin98MethodType {
     SOL_VERIFY = 'sol_verify',
 }
 
+export enum SolflareMethodType {
+    SIGN_TRANSACTION = 'signTransactionV2',
+    SIGN_TRANSACTIONS = 'signAllTransactionsV2',
+}
+
+export enum OKXMethodType {
+    SIGN_AND_SEND_TRANSACTION = 'signAndSendTransaction',
+    SIGN_TRANSACTION = 'signTransaction',
+    SIGN_ALL_TRANSACTIONS = 'signAllTransactions',
+    SIGN_MESSAGE = 'signMessage',
+    RPC_SIGN_AND_SEND_TRANSACTION = 'rpcSignAndSendTransaction',
+    RPC_SIGN_TRANSACTION = 'rpcSignTransaction',
+    RPC_SIGN_ALL_TRANSACTIONS = 'rpcSignAllTransactions',
+    RPC_SIGN_MESSAGE = 'rpcSignMessage',
+}
+
 export interface Payload {
     method: string
     params?: unknown
@@ -67,9 +89,45 @@ export type Web3Provider = {
 export type Signature = string
 export type GasOption = never
 export type Block = BlockResponse
+export type MessageRequest = never
+export type MessageResponse = never
 export type Operation = never
-export type Transaction = SolanaTransaction
+export type Transaction = SolanaTransaction | LegacyTransaction
 export type TransactionReceipt = never
 export type TransactionDetailed = TransactionResponse
-export type TransactionSignature = SolanaTransaction
+export type TransactionSignature = SolanaTransaction | LegacyTransaction
 export type TransactionParameter = string
+
+export type Web3State = Web3StateShared<
+    ChainId,
+    SchemaType,
+    ProviderType,
+    NetworkType,
+    MessageRequest,
+    MessageResponse,
+    Transaction,
+    TransactionParameter
+>
+
+export type Web3Definition = {
+    ChainId: ChainId
+    AddressType: AddressType
+    SchemaType: SchemaType
+    ProviderType: ProviderType
+    NetworkType: NetworkType
+    Signature: Signature
+    GasOption: GasOption
+    Block: Block
+    MessageRequest: MessageRequest
+    MessageResponse: MessageResponse
+    Operation: Operation
+    Transaction: Transaction
+    TransactionReceipt: TransactionReceipt
+    TransactionDetailed: TransactionDetailed
+    TransactionSignature: TransactionSignature
+    TransactionParameter: TransactionParameter
+    UserOperation: Operation
+    Web3: Web3
+    Web3Provider: Web3Provider
+    Web3State: Web3State
+}

@@ -1,6 +1,8 @@
 import { getEnumAsArray } from '@masknet/kit'
+import { NetworkPluginID } from '@masknet/shared-base'
 import { isSameAddress } from '@masknet/web3-shared-base'
-import { getTokenConstant, ZERO_ADDRESS } from '../constants/index.js'
+import { getTokenConstant } from '../constants/constants.js'
+import { ZERO_ADDRESS } from '../constants/primitives.js'
 import { ChainId, NetworkType, ProviderType } from '../types.js'
 
 export function formatAddress(address: string, size = 0) {
@@ -32,6 +34,10 @@ export function isValidAddress(address?: string): address is string {
 
 export function isValidChainId(chainId?: ChainId) {
     return getEnumAsArray(ChainId).some((x) => x.value === chainId)
+}
+
+export function getNetworkPluginID() {
+    return NetworkPluginID.PLUGIN_FLOW
 }
 
 export function getDefaultChainId() {

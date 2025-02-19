@@ -27,7 +27,7 @@ const RULES = [
         hosts: ['opensea.io'],
         pathname: /^\/assets\/matic\/(0x[\dA-Fa-f]{40})\/(\d+)/,
         pluginID: NetworkPluginID.PLUGIN_EVM,
-        chainId: ChainIdEVM.Matic,
+        chainId: ChainIdEVM.Polygon,
         provider: SourceType.OpenSea,
     },
     {
@@ -64,7 +64,7 @@ const RULES = [
         hosts: ['rarible.com', 'app.rarible.com'],
         pathname: /^\/token\/polygon\/(0x[\dA-Fa-f]{40}):(\d+)/,
         pluginID: NetworkPluginID.PLUGIN_EVM,
-        chainId: ChainIdEVM.Matic,
+        chainId: ChainIdEVM.Polygon,
         provider: SourceType.Rarible,
     },
     {
@@ -76,6 +76,14 @@ const RULES = [
     },
 
     // zora
+    {
+        hosts: ['zora.co', 'market.zora.co'],
+        pathname: /^\/collect\/(zora|eth:0x[\dA-Fa-f]{40})\/(\d+)/,
+        pluginID: NetworkPluginID.PLUGIN_EVM,
+        chainId: ChainIdEVM.Mainnet,
+        provider: SourceType.Zora,
+        address: (matched: string) => matched.replace('zora', ZORA_COLLECTION_ADDRESS).replace(/^eth:/, ''),
+    },
     {
         hosts: ['zora.co', 'market.zora.co'],
         pathname: /^\/collections\/(zora|0x[\dA-Fa-f]{40})\/(\d+)/,
@@ -106,7 +114,7 @@ const RULES = [
     // element
     {
         hosts: ['element.market', 'www.element.market'],
-        pathname: /^\/assets\/(0x[\dA-Fa-f]{40})\/(\d+)/,
+        pathname: /^\/assets(?:\/ethereum)?\/(0x[\dA-Fa-f]{40})\/(\d+)/,
         pluginID: NetworkPluginID.PLUGIN_EVM,
         chainId: ChainIdEVM.Mainnet,
         provider: SourceType.Element,
@@ -122,7 +130,7 @@ const RULES = [
         hosts: ['element.market', 'www.element.market'],
         pathname: /^\/assets\/polygon\/(0x[\dA-Fa-f]{40})\/(\d+)/,
         pluginID: NetworkPluginID.PLUGIN_EVM,
-        chainId: ChainIdEVM.Matic,
+        chainId: ChainIdEVM.Polygon,
         provider: SourceType.Element,
     },
 
@@ -172,6 +180,14 @@ const RULES = [
     // OKX
     {
         hosts: ['www.okx.com'],
+        pathname: /^\/web3\/marketplace\/nft\/asset\/eth\/(0x[\dA-Fa-f]{40})\/(\d+)/,
+        pluginID: NetworkPluginID.PLUGIN_EVM,
+        chainId: ChainIdEVM.Mainnet,
+        provider: SourceType.OKX,
+    },
+    // OKX legacy
+    {
+        hosts: ['www.okx.com'],
         pathname: /^\/web3\/nft\/markets\/eth\/(0x[\dA-Fa-f]{40})\/(\d+)/,
         pluginID: NetworkPluginID.PLUGIN_EVM,
         chainId: ChainIdEVM.Mainnet,
@@ -180,10 +196,25 @@ const RULES = [
     // Uniswap
     {
         hosts: ['app.uniswap.org'],
+        pathname: /^\/nfts\/asset\/(0x[\dA-Fa-f]{40})\/(\d+)/,
+        pluginID: NetworkPluginID.PLUGIN_EVM,
+        chainId: ChainIdEVM.Mainnet,
+        provider: SourceType.Uniswap,
+    },
+    // Uniswap Legacy
+    {
+        hosts: ['app.uniswap.org'],
         hash: /#\/nfts\/asset\/(0x[\dA-Fa-f]{40})\/(\d+)/,
         pluginID: NetworkPluginID.PLUGIN_EVM,
         chainId: ChainIdEVM.Mainnet,
         provider: SourceType.Uniswap,
+    },
+    {
+        hosts: ['nftx.io'],
+        pathname: /^\/vault\/(0x[\dA-Fa-f]{40})\/(\d+)/,
+        pluginID: NetworkPluginID.PLUGIN_EVM,
+        chainId: ChainIdEVM.Mainnet,
+        provider: SourceType.NFTX,
     },
 ]
 
@@ -196,18 +227,12 @@ export function getPayloadFromURLs(urls: readonly string[]): CollectiblePayload 
 }
 
 export function getPayloadFromURL(url?: string): CollectiblePayload | undefined {
-    if (!url) return
-    let _url: URL
-    try {
-        _url = new URL(url)
-    } catch {
-        return
-    }
+    if (!url || !URL.canParse(url)) return
+    const { hostname, pathname, hash } = new URL(url)
 
     for (const rule of RULES) {
-        const isHostMatched = rule.hosts.includes(_url.hostname)
-        const matched =
-            (rule.pathname && _url.pathname.match(rule.pathname)) || (rule.hash && _url.hash.match(rule.hash))
+        const isHostMatched = rule.hosts.includes(hostname)
+        const matched = (rule.pathname && pathname.match(rule.pathname)) || (rule.hash && hash.match(rule.hash))
 
         if (isHostMatched && matched) {
             return {
@@ -216,9 +241,9 @@ export function getPayloadFromURL(url?: string): CollectiblePayload | undefined 
                 provider: rule.provider,
                 address: rule.address?.(matched[1]) ?? matched[1],
                 tokenId:
-                    rule.pluginID === NetworkPluginID.PLUGIN_SOLANA
-                        ? rule.address?.(matched[1]) ?? matched[1]
-                        : matched[2],
+                    rule.pluginID === NetworkPluginID.PLUGIN_SOLANA ?
+                        (rule.address?.(matched[1]) ?? matched[1])
+                    :   matched[2],
             }
         }
     }

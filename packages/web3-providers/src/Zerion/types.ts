@@ -1,3 +1,4 @@
+import type { Socket } from 'socket.io-client'
 export enum SocketRequestNameSpace {
     Address = 'address',
     Assets = 'assets',
@@ -6,7 +7,7 @@ export enum SocketRequestNameSpace {
 
 export type SocketNameSpace = {
     namespace: SocketRequestNameSpace
-    socket: SocketIOClient.Socket
+    socket: typeof Socket
 }
 
 export enum SocketRequestType {
@@ -169,7 +170,7 @@ export interface ZerionNonFungibleTokenItem {
     id: string
     section: string
     section_tokens_count: number
-    standard: string
+    standard: LiteralUnion<'ERC1155' | 'ERC721'>
     value?: string
     displayed_on_chart: boolean
     amount: string

@@ -1,5 +1,4 @@
-import { getEnumAsArray } from '@masknet/kit'
-import { EnhanceableSite, ExtensionSite, NetworkPluginID } from '@masknet/shared-base'
+import { EnhanceableSiteList, ExtensionSiteList, NetworkPluginID } from '@masknet/shared-base'
 import {
     type ChainDescriptor,
     createFungibleToken,
@@ -7,11 +6,13 @@ import {
     type ProviderDescriptor,
 } from '@masknet/web3-shared-base'
 import { ChainId, NetworkType, ProviderType, SchemaType } from '../types.js'
+import { ChainIdList } from './constants.js'
 
 const PLUGIN_ID = NetworkPluginID.PLUGIN_FLOW
 
-export const CHAIN_DESCRIPTORS: Array<ChainDescriptor<ChainId, SchemaType, NetworkType>> = [
+export const CHAIN_DESCRIPTORS: ReadonlyArray<ChainDescriptor<ChainId, SchemaType, NetworkType>> = [
     {
+        ID: `${ChainId.Mainnet}_Flow`,
         type: NetworkType.Flow,
         chainId: ChainId.Mainnet,
         coinMarketCapChainId: '',
@@ -31,11 +32,14 @@ export const CHAIN_DESCRIPTORS: Array<ChainDescriptor<ChainId, SchemaType, Netwo
             8,
             'https://static.flowscan.org/mainnet/icons/A.1654653399040a61.FlowToken.png',
         ),
-        explorerURL: {
+        explorerUrl: {
             url: 'https://flowscan.org/',
         },
+        rpcUrl: '',
+        isCustomized: false,
     },
     {
+        ID: `${ChainId.Testnet}_Flow`,
         type: NetworkType.Flow,
         chainId: ChainId.Testnet,
         coinMarketCapChainId: '',
@@ -55,20 +59,22 @@ export const CHAIN_DESCRIPTORS: Array<ChainDescriptor<ChainId, SchemaType, Netwo
             8,
             'https://static.flowscan.org/mainnet/icons/A.1654653399040a61.FlowToken.png',
         ),
-        explorerURL: {
+        explorerUrl: {
             url: 'https://testnet.flowscan.org/',
         },
+        rpcUrl: '',
+        isCustomized: false,
     },
 ]
 
-export const NETWORK_DESCRIPTORS: Array<NetworkDescriptor<ChainId, NetworkType>> = [
+export const NETWORK_DESCRIPTORS: ReadonlyArray<NetworkDescriptor<ChainId, NetworkType>> = [
     {
         ID: `${PLUGIN_ID}_flow`,
         networkSupporterPluginID: PLUGIN_ID,
         chainId: ChainId.Mainnet,
         type: NetworkType.Flow,
         name: 'Flow',
-        icon: new URL('../assets/flow.png', import.meta.url),
+        icon: new URL('../assets/flow.png', import.meta.url).href,
         iconColor: 'rgb(54, 173, 104)',
         averageBlockDelay: 15,
         isMainnet: true,
@@ -79,28 +85,29 @@ export const NETWORK_DESCRIPTORS: Array<NetworkDescriptor<ChainId, NetworkType>>
         chainId: ChainId.Testnet,
         type: NetworkType.Flow,
         name: 'Flow Testnet',
-        icon: new URL('../assets/flow.png', import.meta.url),
+        icon: new URL('../assets/flow.png', import.meta.url).href,
         iconColor: 'rgb(54, 173, 104)',
         averageBlockDelay: 15,
         isMainnet: false,
     },
 ]
-export const PROVIDER_DESCRIPTORS: Array<ProviderDescriptor<ChainId, ProviderType>> = [
+export const PROVIDER_DESCRIPTORS: ReadonlyArray<ProviderDescriptor<ChainId, ProviderType>> = [
     {
         ID: `${PLUGIN_ID}_blocto`,
         providerAdaptorPluginID: PLUGIN_ID,
         type: ProviderType.Blocto,
         name: 'Blocto',
-        icon: new URL('../assets/blocto.png', import.meta.url),
+        icon: new URL('../assets/blocto.png', import.meta.url).href,
         iconFilterColor: 'rgba(52, 133, 196, 0.2)',
         backgroundGradient:
             'linear-gradient(90deg, rgba(52, 133, 196, 0.2) 0%, rgba(0, 239, 139, 0.2) 100%), linear-gradient(0deg, #FFFFFF, #FFFFFF)',
         homeLink: 'https://portto.com/',
+        // cspell: disable-next-line
         shortenLink: 'portto.com',
         enableRequirements: {
-            supportedChainIds: getEnumAsArray(ChainId).map((x) => x.value),
-            supportedEnhanceableSites: getEnumAsArray(EnhanceableSite).map((x) => x.value),
-            supportedExtensionSites: getEnumAsArray(ExtensionSite).map((x) => x.value),
+            supportedChainIds: ChainIdList,
+            supportedEnhanceableSites: EnhanceableSiteList,
+            supportedExtensionSites: ExtensionSiteList,
         },
     },
 ]

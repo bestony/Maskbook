@@ -1,12 +1,10 @@
-import './Cancellable/NewInstalled.js'
-import './Cancellable/InjectContentScripts.js'
-import './Cancellable/InjectContentScripts-mv3.js'
-import './Cancellable/IsolatedDashboardBridge.js'
+import './Cancellable/InjectContentScripts_imperative.js'
+import './Cancellable/InjectContentScripts_declarative.js'
+import './Cancellable/FetchRemoteFlags.js'
 import './Cancellable/CleanProfileAndAvatar.js'
-import './Cancellable/PopupSSR/index.js'
-import './Cancellable/PopupSSR/index.mv3.js'
 import './Cancellable/SettingsListener.js'
 import './Cancellable/StartPluginHost.js'
 import './Cancellable/StartSandboxedPluginHost.js'
+import './Cancellable/WalletAutoLock.js'
 
-if (import.meta.webpackHot) import.meta.webpackHot.accept()
+import.meta.webpackHot?.accept()

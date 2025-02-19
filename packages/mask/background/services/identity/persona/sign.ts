@@ -1,33 +1,34 @@
-import { v4 as uuid } from 'uuid'
 import { timeout } from '@masknet/kit'
-import { Web3Signer } from '@masknet/web3-providers'
+import { Signer } from '@masknet/web3-providers'
 import {
     type PersonaIdentifier,
     fromBase64URL,
     PopupRoutes,
     type ECKeyIdentifier,
     type SignType,
+    MaskMessages,
 } from '@masknet/shared-base'
-import { MaskMessages } from '../../../../shared/index.js'
-import { queryPersonasWithPrivateKey } from '../../../../background/database/persona/db.js'
-import { openPopupWindow } from '../../../../background/services/helper/index.js'
+import { queryPersonasWithPrivateKey } from '../../../database/persona/web.js'
+import { openPopupWindow } from '../../helper/popup-opener.js'
 
 /**
  * Generate a signature w or w/o confirmation from user
  */
-export async function signWithPersona<T>(
+export async function signWithPersona(
     type: SignType,
-    message: T,
+    message: unknown,
     identifier?: ECKeyIdentifier,
+    source?: string,
     silent = false,
 ): Promise<string> {
     const getIdentifier = async () => {
         if (!identifier || !silent) {
-            const requestID = uuid()
+            const requestID = crypto.randomUUID()
             await openPopupWindow(PopupRoutes.PersonaSignRequest, {
                 message: JSON.stringify(message),
                 requestID,
                 identifier: identifier?.toText(),
+                source,
             })
 
             return timeout(
@@ -52,5 +53,5 @@ export async function signWithPersona<T>(
     const persona = (await queryPersonasWithPrivateKey()).find((x) => x.identifier === identifier_)
     if (!persona?.privateKey.d) throw new Error('Persona not found')
 
-    return Web3Signer.sign(type, Buffer.from(fromBase64URL(persona.privateKey.d)), message)
+    return Signer.sign(type, Buffer.from(fromBase64URL(persona.privateKey.d)), message)
 }

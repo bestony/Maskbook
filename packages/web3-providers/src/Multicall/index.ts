@@ -1,57 +1,48 @@
-import type { AbiItem, AbiOutput } from 'web3-utils'
 import { EMPTY_LIST } from '@masknet/shared-base'
-import type { Multicall } from '@masknet/web3-contracts/types/Multicall.js'
+import type { Multicall as MulticallAPI } from '@masknet/web3-contracts/types/Multicall.js'
 import type { BaseContract, NonPayableTx } from '@masknet/web3-contracts/types/types.js'
-import MulticallABI from '@masknet/web3-contracts/abis/Multicall.json'
 import {
     type ChainId,
     ContractTransaction,
-    createContract,
     decodeOutputString,
     getEthereumConstant,
     type UnboxTransactionObject,
 } from '@masknet/web3-shared-evm'
+import { EVMContractReadonly } from '../Web3/EVM/apis/ContractReadonlyAPI.js'
+import { EVMWeb3Readonly } from '../Web3/EVM/apis/ConnectionReadonlyAPI.js'
 import { CONSERVATIVE_BLOCK_GAS_LIMIT, DEFAULT_GAS_LIMIT, DEFAULT_GAS_REQUIRED } from './constants.js'
-import { Web3API } from '../Connection/index.js'
 import type { MulticallBaseAPI } from '../entry-types.js'
 
-export class MulticallAPI implements MulticallBaseAPI.Provider {
-    private web3 = new Web3API()
-
-    private results: {
+export class Multicall {
+    private static results: {
         [chainId: number]: {
             blockNumber: number
             results: Record<string, MulticallBaseAPI.Result>
         }
     } = {}
 
-    private createWeb3(chainId: ChainId) {
-        return this.web3.getWeb3(chainId)
-    }
-
-    private createContract(chainId: ChainId) {
+    private static createContract(chainId: ChainId) {
         const address = getEthereumConstant(chainId, 'MULTICALL_ADDRESS')
         if (!address) throw new Error('Failed to create multicall contract.')
 
-        const web3 = this.createWeb3(chainId)
-        const contract = createContract<Multicall>(web3, address, MulticallABI as unknown as AbiItem[])
+        const contract = EVMContractReadonly.getMulticallContract(address, { chainId })
         if (!contract) throw new Error('Failed to create multicall contract.')
 
         return contract
     }
 
-    private toCallKey(call: MulticallBaseAPI.Call) {
+    private static toCallKey(call: MulticallBaseAPI.Call) {
         return call.join('-')
     }
 
-    private getCallResult(call: MulticallBaseAPI.Call, chainId: ChainId, blockNumber: number) {
+    private static getCallResult(call: MulticallBaseAPI.Call, chainId: ChainId, blockNumber: number) {
         const cache = this.results[chainId]
         const blockNumber_ = cache?.blockNumber ?? 0
         if (blockNumber_ < blockNumber) return
         return cache.results[this.toCallKey(call)]
     }
 
-    private setCallResult(
+    private static setCallResult(
         call: MulticallBaseAPI.Call,
         result: MulticallBaseAPI.Result,
         chainId: ChainId,
@@ -69,7 +60,7 @@ export class MulticallAPI implements MulticallBaseAPI.Provider {
     }
 
     // evenly distributes items among the chunks
-    private chunkArray(
+    private static chunkArray(
         items: MulticallBaseAPI.Call[],
         gasLimit = CONSERVATIVE_BLOCK_GAS_LIMIT * 10,
     ): MulticallBaseAPI.Call[][] {
@@ -97,7 +88,7 @@ export class MulticallAPI implements MulticallBaseAPI.Provider {
         return chunks
     }
 
-    async call<
+    static async call<
         T extends BaseContract,
         K extends keyof T['methods'],
         R extends UnboxTransactionObject<ReturnType<T['methods'][K]>>,
@@ -114,8 +105,7 @@ export class MulticallAPI implements MulticallBaseAPI.Provider {
         const contract = this.createContract(chainId)
         if (!contract) return EMPTY_LIST
 
-        const web3 = this.createWeb3(chainId)
-        const blockNumber_ = blockNumber ?? (await web3.eth.getBlockNumber()) ?? 0
+        const blockNumber_ = blockNumber ?? (await EVMWeb3Readonly.getBlockNumber({ chainId }))
 
         // filter out cached calls
         const unresolvedCalls = calls.filter((call_) => !this.getCallResult(call_, chainId, blockNumber_))
@@ -126,18 +116,15 @@ export class MulticallAPI implements MulticallBaseAPI.Provider {
                 this.chunkArray(unresolvedCalls).map(async (chunk) => {
                     // we don't mind the actual block number of the current call
                     const tx = new ContractTransaction(contract).fill(contract.methods.multicall(chunk), overrides)
-                    const hex = await web3.eth.call(tx)
+                    const hex = await EVMWeb3Readonly.callTransaction(tx, { chainId })
 
-                    const outputType = contract.options.jsonInterface.find(({ name }) => name === 'multicall')?.outputs
-                    if (!outputType) return
-
-                    const decodeResult = decodeOutputString(web3, outputType, hex) as
-                        | UnboxTransactionObject<ReturnType<Multicall['methods']['multicall']>>
+                    const result = decodeOutputString(contract.options.jsonInterface, hex, 'multicall') as
+                        | UnboxTransactionObject<ReturnType<MulticallAPI['methods']['multicall']>>
                         | undefined
 
-                    if (!decodeResult) return
+                    if (!result) return
 
-                    decodeResult.returnData.forEach((result, index) =>
+                    result.returnData.forEach((result, index) =>
                         this.setCallResult(chunk[index], result, chainId, blockNumber_),
                     )
                 }),
@@ -150,12 +137,12 @@ export class MulticallAPI implements MulticallBaseAPI.Provider {
         )
 
         return results.map<MulticallBaseAPI.DecodeResult<T, K, R>>(([succeed, gasUsed, result], index) => {
-            const outputs: AbiOutput[] =
-                contracts[index].options.jsonInterface.find(
-                    ({ type, name }) => type === 'function' && name === names[index],
-                )?.outputs ?? []
             try {
-                const value = decodeOutputString(web3, outputs, result) as R
+                const value = decodeOutputString(
+                    contracts[index].options.jsonInterface,
+                    result,
+                    names[index] as string,
+                ) as R
                 return { succeed, gasUsed, value, error: null }
             } catch (error) {
                 return { succeed: false, gasUsed, value: null, error }
@@ -163,20 +150,20 @@ export class MulticallAPI implements MulticallBaseAPI.Provider {
         })
     }
 
-    createSingleContractMultipleData<T extends BaseContract, K extends keyof T['methods']>(
+    static createSingleContractMultipleData<T extends BaseContract, K extends keyof T['methods']>(
         contract: T,
         names: K[],
-        callDatas: Array<Parameters<T['methods'][K]>>,
+        callData: Array<Parameters<T['methods'][K]>>,
         gasLimit = DEFAULT_GAS_LIMIT,
     ) {
-        return callDatas.map<MulticallBaseAPI.Call>((data, i) => [
+        return callData.map<MulticallBaseAPI.Call>((data, i) => [
             contract.options.address,
             gasLimit,
             contract.methods[names[i]](...data).encodeABI() as string,
         ])
     }
 
-    createMultipleContractSingleData<T extends BaseContract, K extends keyof T['methods']>(
+    static createMultipleContractSingleData<T extends BaseContract, K extends keyof T['methods']>(
         contracts: T[],
         names: K[],
         callData: Parameters<T['methods'][K]>,
@@ -186,19 +173,6 @@ export class MulticallAPI implements MulticallBaseAPI.Provider {
             contract.options.address,
             gasLimit,
             contract.methods[names[i]](...callData).encodeABI() as string,
-        ])
-    }
-
-    createMultipleContractMultipleData<T extends BaseContract, K extends keyof T['methods']>(
-        contracts: T[],
-        names: K[],
-        callDatas: Array<Parameters<T['methods'][K]>>,
-        gasLimit = DEFAULT_GAS_LIMIT,
-    ) {
-        return contracts.map<MulticallBaseAPI.Call>((contract, i) => [
-            contract.options.address,
-            gasLimit,
-            contract.methods[names[i]](callDatas[i]).encodeABI() as string,
         ])
     }
 }

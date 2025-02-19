@@ -1,4 +1,4 @@
-// Encrypt & decrypt (decryptionWithSocialNetworkDecoding is a generator, not included.)
+// Encrypt & decrypt (decryptWithDecoding is a generator, not included.)
 export { encryptTo } from './encryption.js'
 export { appendShareTarget } from './appendEncryption.js'
 
@@ -8,5 +8,4 @@ export { encryptComment, decryptComment } from './comment.js'
 // Steganography
 export { steganographyEncodeImage } from './steganography.js'
 
-export { queryPagedPostHistory, type QueryPagedPostHistoryOptions } from './posts.js'
 export { getRecipients, hasRecipientAvailable, getIncompleteRecipientsOfPost } from './recipients.js'

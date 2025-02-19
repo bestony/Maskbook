@@ -1,8 +1,8 @@
 import { useEffect } from 'react'
-import { useAsyncRetry } from 'react-use'
-import { EMPTY_LIST, type NextIDPlatform } from '@masknet/shared-base'
+import { EMPTY_LIST, MaskMessages, type NextIDPersonaBindings, type NextIDPlatform } from '@masknet/shared-base'
 import { NextIDProof } from '@masknet/web3-providers'
-import type { UnboundedRegistry } from '@dimensiondev/holoflows-kit'
+import { useQuery } from '@tanstack/react-query'
+import type { UseQueryResult } from '@tanstack/react-query'
 
 /**
  * Get all personas bound with the given identity from NextID service
@@ -10,13 +10,16 @@ import type { UnboundedRegistry } from '@dimensiondev/holoflows-kit'
 export function usePersonasFromNextID(
     userId: string,
     platform: NextIDPlatform,
-    ownProofChanged: UnboundedRegistry<void>,
     exact?: boolean,
-) {
-    const asyncRetry = useAsyncRetry(async () => {
-        if (!platform || !userId) return EMPTY_LIST
-        return NextIDProof.queryAllExistedBindingsByPlatform(platform, userId, exact)
-    }, [platform, userId, exact])
-    useEffect(() => ownProofChanged.on(asyncRetry.retry), [asyncRetry.retry, ownProofChanged])
-    return asyncRetry
+): UseQueryResult<NextIDPersonaBindings[]> {
+    const result = useQuery({
+        queryKey: ['next-id', 'personas', userId, platform, exact],
+        queryFn: async () => {
+            if (!platform || !userId) return EMPTY_LIST
+            return NextIDProof.queryAllExistedBindingsByPlatform(platform, userId, exact)
+        },
+    })
+
+    useEffect(() => MaskMessages.events.ownProofChanged.on(() => result.refetch), [result.refetch])
+    return result
 }

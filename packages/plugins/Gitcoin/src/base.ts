@@ -1,18 +1,22 @@
 import type { Plugin } from '@masknet/plugin-infra'
-import { PLUGIN_ID, PLUGIN_NAME, PLUGIN_DESCRIPTION } from './constants.js'
-import { languages } from './locales/languages.js'
+import { DEFAULT_PLUGIN_PUBLISHER, EnhanceableSite, PluginID } from '@masknet/shared-base'
+import { languages } from './locale/languages.js'
 
+export const PLUGIN_NAME = 'Gitcoin'
 export const base: Plugin.Shared.Definition = {
-    ID: PLUGIN_ID,
+    ID: PluginID.Gitcoin,
     name: { fallback: PLUGIN_NAME },
-    description: { fallback: PLUGIN_DESCRIPTION },
-    publisher: { name: { fallback: 'Mask Network' }, link: 'https://mask.io/' },
+    description: { fallback: 'Gitcoin grants sustain web3 projects with quadratic funding.' },
+    publisher: DEFAULT_PLUGIN_PUBLISHER,
     enableRequirement: {
-        networks: { type: 'opt-out', networks: {} },
+        supports: {
+            type: 'opt-out',
+            sites: {
+                [EnhanceableSite.Localhost]: true,
+            },
+        },
         target: 'stable',
-        host_permissions: ['https://gitcoin.co/'],
     },
-    inMinimalModeByDefault: true,
-    contribution: { postContent: new Set([/https:\/\/gitcoin.co\/grants\/\d+/]) },
+    contribution: { postContent: new Set([/^https:\/\/explorer\.gitcoin\.co\/#\/projects\/0x[\dA-Fa-f]{64}/]) },
     i18n: languages,
 }

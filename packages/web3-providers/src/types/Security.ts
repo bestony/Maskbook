@@ -62,7 +62,7 @@ export namespace SecurityAPI {
          * It describes the data source for this address information.
          * For example: GoPlus/SlowMist
          */
-        data_source: 'GoPlus' | 'SlowMist' | string
+        data_source: LiteralUnion<'GoPlus' | 'SlowMist'>
         /** It describes whether this address is related to honeypot tokens or has created scam tokens.  */
         honeypot_related_address: BooleanChar
         /** It describes whether this address has implemented phishing activities.  */
@@ -77,6 +77,7 @@ export namespace SecurityAPI {
         malicious_mining_activities: BooleanChar
         /** It describes whether this address is involved in darkweb transactions */
         darkweb_transactions: BooleanChar
+        // cspell:ignore cybercrime
         /** It describes whether this address is involved in cybercrime. */
         cybercrime: BooleanChar
         /** It describes whether this address is involved in money laundering. */
@@ -108,9 +109,4 @@ export namespace SecurityAPI {
             contract: string
             chainId: ChainId
         }
-
-    export interface Provider<ChainId> {
-        getTokenSecurity(chainId: ChainId, listOfAddress: string[]): Promise<TokenSecurityType | void>
-        getSupportedChain(): Promise<Array<SupportedChain<ChainId>>>
-    }
 }

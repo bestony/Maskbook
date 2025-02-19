@@ -3,12 +3,9 @@
 package.json
 package-lock.json
 pnpm-lock.yaml
+**/CHANGELOG.md
 
 *generated*
-storybook-static
-
-packages/storybook-shared/*.d.ts
-packages/storybook-shared/*.js
 
 # VSCode personal settings
 .vscode/launch.json
@@ -24,7 +21,6 @@ packages/storybook-shared/*.js
 # Build out
 dist/*
 /build
-/storybook-static
 /MaskNetwork.*.zip
 
 # Environment files
@@ -163,8 +159,3 @@ common/deploy/
 common/temp/
 common/autoinstallers/*/.npmrc
 **/.rush/temp/
-
-# storybook-shared
-packages/storybook-shared/*.js
-packages/storybook-shared/*.map
-packages/storybook-shared/*.d.ts

@@ -11,7 +11,7 @@ import type {
     IDBPIndex,
     IDBPCursorWithValue,
     IDBPCursor,
-} from 'idb/with-async-ittr'
+} from 'idb'
 import { assertEnvironment, Environment } from '@dimensiondev/holoflows-kit'
 
 export function createDBAccess<DBSchema>(opener: () => Promise<IDBPDatabase<DBSchema>>) {
@@ -49,13 +49,7 @@ export function createDBAccessWithAsyncUpgrade<DBSchema, AsyncUpgradePreparedDat
     dbName: string,
 ) {
     let db: IDBPDatabase<DBSchema> | undefined = undefined
-    function clean() {
-        if (db) {
-            db.close()
-            db.addEventListener('close', () => (pendingOpen = db = undefined), { once: true })
-        }
-        pendingOpen = db = undefined
-    }
+
     let pendingOpen: Promise<IDBPDatabase<DBSchema>> | undefined
     async function open(): Promise<IDBPDatabase<DBSchema>> {
         assertEnvironment(Environment.ManifestBackground)
@@ -99,7 +93,7 @@ export function createDBAccessWithAsyncUpgrade<DBSchema, AsyncUpgradePreparedDat
         return promise
     }
 }
-export interface IDBPSafeObjectStore<
+interface IDBPSafeObjectStore<
     DBTypes extends DBSchema,
     TxStores extends Array<StoreNames<DBTypes>> = Array<StoreNames<DBTypes>>,
     StoreName extends StoreNames<DBTypes> = StoreNames<DBTypes>,
@@ -169,11 +163,11 @@ export type IDBPSafeTransaction<
     readonly mode: IDBTransactionMode
     readonly __writable__?: Mode extends 'readwrite' ? true : boolean
     readonly __stores__?: Record<
-        TxStores extends ReadonlyArray<infer ValueOfUsedStoreName>
-            ? ValueOfUsedStoreName extends string | number | symbol
-                ? ValueOfUsedStoreName
-                : never
-            : never,
+        TxStores extends ReadonlyArray<infer ValueOfUsedStoreName> ?
+            ValueOfUsedStoreName extends string | number | symbol ?
+                ValueOfUsedStoreName
+            :   never
+        :   never,
         never
     >
     objectStore<StoreName extends TxStores[number]>(

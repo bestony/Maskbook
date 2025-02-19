@@ -1,11 +1,14 @@
-import { InjectedProvider } from './Base.js'
+import { InjectedWalletBridge } from './BaseInjected.js'
 
-export class OperaProvider extends InjectedProvider {
+export class OperaProvider extends InjectedWalletBridge {
     constructor() {
         super('ethereum')
     }
 
     override async untilAvailable(): Promise<void> {
-        await super.untilAvailable(() => super.getProperty('isOpera') as Promise<boolean>)
+        await super.untilAvailable(async () => {
+            const isOpera = await super.getProperty<boolean>('isOpera')
+            return !!isOpera
+        })
     }
 }

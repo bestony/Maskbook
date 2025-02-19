@@ -1,4 +1,4 @@
-import { type HTMLProps, type ImgHTMLAttributes, useState } from 'react'
+import { type HTMLProps, type ImgHTMLAttributes, type JSX, useState } from 'react'
 import { makeStyles } from '@masknet/theme'
 import { useTheme } from '@mui/material'
 
@@ -14,6 +14,7 @@ const useStyles = makeStyles<Pick<ImageProps, 'size' | 'rounded'>, 'center'>()((
         position: 'relative',
         borderRadius: rounded ? '50%' : undefined,
         overflow: rounded ? 'hidden' : undefined,
+        flexShrink: 0,
     },
     image: {
         display: 'block',
@@ -30,22 +31,22 @@ const useStyles = makeStyles<Pick<ImageProps, 'size' | 'rounded'>, 'center'>()((
     failed: {
         [`&.${refs.center}`]: {
             background:
-                theme.palette.mode === 'light'
-                    ? 'linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.9) 100%), linear-gradient(90deg, rgba(98, 152, 234, 0.2) 1.03%, rgba(98, 152, 234, 0.2) 1.04%, rgba(98, 126, 234, 0.2) 100%)'
-                    : 'linear-gradient(180deg, #202020 0%, #181818 100%)',
+                theme.palette.mode === 'light' ?
+                    'linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.9) 100%), linear-gradient(90deg, rgba(98, 152, 234, 0.2) 1.03%, rgba(98, 152, 234, 0.2) 1.04%, rgba(98, 126, 234, 0.2) 100%)'
+                :   'linear-gradient(180deg, #202020 0%, #181818 100%)',
         },
     },
 }))
 
-const MASK_DARK_FALLBACK = new URL('./mask-dark.png', import.meta.url).toString()
-const MASK_LIGHT_FALLBACK = new URL('./mask-light.png', import.meta.url).toString()
+const MASK_DARK_FALLBACK = new URL('./mask-dark.png', import.meta.url).href
+const MASK_LIGHT_FALLBACK = new URL('./mask-light.png', import.meta.url).href
 
 export interface ImageProps
     extends ImgHTMLAttributes<HTMLImageElement>,
-        withClasses<'container' | 'fallbackImage' | 'imageLoading'> {
+        withClasses<'container' | 'fallbackImage' | 'imageLoading' | 'failed'> {
     size?: number | string
     rounded?: boolean
-    fallback?: URL | string | JSX.Element
+    fallback?: string | JSX.Element | null
     disableSpinner?: boolean
     containerProps?: HTMLProps<HTMLDivElement>
 }
@@ -73,7 +74,10 @@ export function Image({
                     height={size}
                     {...rest}
                     src={rest.src}
-                    onError={() => setFailed(true)}
+                    onError={(e) => {
+                        rest.onError?.(e)
+                        setFailed(true)
+                    }}
                 />
             </div>
         )
@@ -99,7 +103,7 @@ export function Image({
                 width={size}
                 height={size}
                 {...rest}
-                src={fallback?.toString() ?? new URL('./ens.svg', import.meta.url).toString()}
+                src={fallback?.toString() ?? (theme.palette.mode === 'dark' ? MASK_DARK_FALLBACK : MASK_LIGHT_FALLBACK)}
                 className={cx(classes.image, classes.failImage, classes.fallbackImage)}
             />
         </div>

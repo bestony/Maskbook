@@ -1,18 +1,17 @@
-import { compact, first } from 'lodash-es'
+import { compact, first, sortBy } from 'lodash-es'
 import stringify from 'json-stable-stringify'
 import { delay } from '@masknet/kit'
-import type { PersonaIdentifier, ProfileIdentifier } from '@masknet/shared-base'
 import {
+    type PersonaIdentifier,
+    type ProfileIdentifier,
     currentSetupGuideStatus,
-    userGuideFinished,
-    userGuideStatus,
-} from '../../../shared/legacy-settings/settings.js'
-import { SetupGuideStep } from '../../../shared/legacy-settings/types.js'
+    SetupGuideStep,
+} from '@masknet/shared-base'
 import { definedSiteAdaptors } from '../../../shared/site-adaptors/definitions.js'
-import { requestSiteAdaptorsPermission } from '../helper/request-permission.js'
 import type { SiteAdaptor } from '../../../shared/site-adaptors/types.js'
+import type { Tabs } from 'webextension-polyfill'
 
-const hasPermission = async (origin: string): Promise<boolean> => {
+async function hasPermission(origin: string): Promise<boolean> {
     return browser.permissions.contains({
         origins: [origin],
     })
@@ -27,9 +26,12 @@ export async function getSupportedSites(options: SitesQueryOptions = {}): Promis
         networkIdentifier: string
     }>
 > {
-    return [...definedSiteAdaptors.values()]
-        .filter((x) => (options.isSocialNetwork === undefined ? true : x.isSocialNetwork === options.isSocialNetwork))
-        .map((x) => ({ networkIdentifier: x.networkIdentifier }))
+    return sortBy(
+        [...definedSiteAdaptors.values()].filter((x) =>
+            options.isSocialNetwork === undefined ? true : x.isSocialNetwork === options.isSocialNetwork,
+        ),
+        (x) => x.sortIndex,
+    ).map((x) => ({ networkIdentifier: x.networkIdentifier }))
 }
 
 export async function getSupportedOrigins(options: SitesQueryOptions = {}): Promise<
@@ -38,7 +40,7 @@ export async function getSupportedOrigins(options: SitesQueryOptions = {}): Prom
         origins: string[]
     }>
 > {
-    return [...definedSiteAdaptors.values()]
+    return sortBy([...definedSiteAdaptors.values()], (x) => x.sortIndex)
         .filter((x) => (options.isSocialNetwork === undefined ? true : x.isSocialNetwork === options.isSocialNetwork))
         .map((x) => ({ networkIdentifier: x.networkIdentifier, origins: [...x.declarativePermissions.origins] }))
 }
@@ -62,6 +64,21 @@ export async function getOriginsWithoutPermission(options: SitesQueryOptions = {
     return compact(await Promise.all(promises))
 }
 
+export async function getAllOrigins() {
+    const groups = await getSupportedOrigins()
+    const promises = groups.map(async ({ origins, networkIdentifier }) => {
+        const originsWithNoPermission = compact(
+            await Promise.all(origins.map((origin) => hasPermission(origin).then((yes) => (yes ? null : origin)))),
+        )
+        return {
+            networkIdentifier,
+            hasPermission: !originsWithNoPermission.length,
+        }
+    })
+
+    return Promise.all(promises)
+}
+
 export async function getSitesWithoutPermission(): Promise<SiteAdaptor.Definition[]> {
     const groups = [...definedSiteAdaptors.values()]
     const promises = groups.map(async (x) => {
@@ -75,61 +92,44 @@ export async function getSitesWithoutPermission(): Promise<SiteAdaptor.Definitio
     return compact(await Promise.all(promises))
 }
 
-export async function hasSetup(network: string) {
-    return !!userGuideStatus[network].value || userGuideFinished[network].value
-}
-
-export async function setupSite(network: string, newTab: boolean) {
-    const worker = definedSiteAdaptors.get(network)
-    const home = worker?.homepage
-
-    // request permission from all sites supported.
-    if (!(await requestSiteAdaptorsPermission([...definedSiteAdaptors.values()]))) return
-
-    if (!userGuideStatus[network].value) userGuideStatus[network].value = '1'
-
-    await delay(100)
-    if (!home) return
-    if (!newTab) return home
-
-    browser.tabs.create({ active: true, url: home })
-    return
-}
-
+/**
+ * It's caller's responsibility to call browser.permissions.request to get the permissions needed.
+ * @param identifier Persona
+ * @param network Network to connect
+ * @param profile Profile
+ * @param openInNewTab Open in new tab
+ */
 export async function connectSite(
     identifier: PersonaIdentifier,
     network: string,
-    type?: 'local' | 'nextID',
     profile?: ProfileIdentifier,
     openInNewTab = true,
 ) {
-    const worker = definedSiteAdaptors.get(network)
-    if (!worker) return
+    const site = definedSiteAdaptors.get(network)
+    if (!site) return
 
-    const permissionGranted = await requestSiteAdaptorsPermission([worker])
-    if (!permissionGranted) return
-
-    currentSetupGuideStatus[network].value = stringify({
-        status: type === 'nextID' ? SetupGuideStep.VerifyOnNextID : SetupGuideStep.FindUsername,
-        persona: identifier.toText(),
-        username: profile?.userId,
-    })
-
-    const url = worker.homepage
+    const url = site.homepage
     if (!url) return
 
-    await delay(100)
+    let targetTab: Tabs.Tab | undefined
     if (openInNewTab) {
-        await browser.tabs.create({ active: true, url: worker.homepage })
+        targetTab = await browser.tabs.create({ active: true, url: site.homepage })
     } else {
         const openedTabs = await browser.tabs.query({ url: `${url}/*` })
-        const targetTab = openedTabs.find((x: { active: boolean }) => x.active) ?? first(openedTabs)
+        targetTab = openedTabs.find((x: { active: boolean }) => x.active) ?? first(openedTabs)
 
-        if (targetTab?.id && targetTab.windowId) {
-            await browser.tabs.update(targetTab.id, { active: true })
-            await browser.windows.update(targetTab.windowId, { focused: true })
-        } else {
+        if (!targetTab?.id || !targetTab.windowId) {
             await browser.tabs.create({ active: true, url })
         }
     }
+    await delay(100)
+    if (!targetTab?.windowId) return
+    await browser.tabs.update(targetTab.id, { active: true })
+    await browser.windows.update(targetTab.windowId, { focused: true })
+    currentSetupGuideStatus[network].value = stringify({
+        status: SetupGuideStep.VerifyOnNextID,
+        persona: identifier.toText(),
+        username: profile?.userId,
+        tabId: targetTab.id,
+    })
 }

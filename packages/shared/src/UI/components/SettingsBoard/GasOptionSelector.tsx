@@ -1,10 +1,9 @@
 import React, { useCallback, useEffect } from 'react'
 import { makeStyles } from '@masknet/theme'
 import { Box, Divider, Skeleton } from '@mui/material'
-import type { GasOptionType } from '@masknet/web3-shared-base'
-import { NetworkPluginID } from '@masknet/shared-base'
+import { GasOptionType } from '@masknet/web3-shared-base'
 import type { ChainId, GasOption, Transaction } from '@masknet/web3-shared-evm'
-import { useWeb3State } from '@masknet/web3-hooks-base'
+import { EVMUtils } from '@masknet/web3-providers'
 import { GasOption as GasOptionItem } from './GasOption.js'
 import { SettingsContext } from './Context.js'
 
@@ -33,9 +32,9 @@ const useStyles = makeStyles()((theme) => {
     }
 })
 
-export interface GasOptionSelectorProps {
+interface GasOptionSelectorProps {
     chainId: ChainId
-    options?: Record<GasOptionType, GasOption>
+    options?: Record<GasOptionType, GasOption> | null
     onChange?: (option: Partial<Transaction>) => void
 }
 
@@ -43,22 +42,21 @@ export function GasOptionSelector(props: GasOptionSelectorProps) {
     const { chainId, options, onChange } = props
     const { classes } = useStyles()
     const { gasOptionType, setGasOptionType } = SettingsContext.useContainer()
-    const { Others } = useWeb3State(NetworkPluginID.PLUGIN_EVM)
 
-    const isEIP1559 = Others?.chainResolver.isSupport(chainId, 'EIP1559')
+    const isEIP1559 = EVMUtils.chainResolver.isFeatureSupported(chainId, 'EIP1559')
 
     const onClick = useCallback(
         (type: GasOptionType, option: GasOption) => {
             setGasOptionType(type)
             onChange?.(
-                isEIP1559
-                    ? {
-                          maxFeePerGas: option.suggestedMaxFeePerGas,
-                          maxPriorityFeePerGas: option.suggestedMaxPriorityFeePerGas,
-                      }
-                    : {
-                          gasPrice: option.suggestedMaxFeePerGas,
-                      },
+                isEIP1559 ?
+                    {
+                        maxFeePerGas: option.suggestedMaxFeePerGas,
+                        maxPriorityFeePerGas: option.suggestedMaxPriorityFeePerGas,
+                    }
+                :   {
+                        gasPrice: option.suggestedMaxFeePerGas,
+                    },
             )
         },
         [isEIP1559, onChange],
@@ -85,6 +83,7 @@ export function GasOptionSelector(props: GasOptionSelectorProps) {
             <div className={classes.content}>
                 {Object.entries(options).map(([type, option], i) => {
                     const type_ = type as GasOptionType
+                    if (type === GasOptionType.CUSTOM) return
                     return (
                         <React.Fragment key={type}>
                             {i === 0 ? null : <Divider />}

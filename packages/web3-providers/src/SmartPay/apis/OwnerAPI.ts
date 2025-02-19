@@ -1,51 +1,40 @@
-import urlcat from 'urlcat'
-import { compact, first, unionBy } from 'lodash-es'
-import { type AbiItem, padLeft, toHex } from 'web3-utils'
-import {
-    type ChainId,
-    ContractWallet,
-    Create2Factory,
-    createContract,
-    getSmartPayConstants,
-    isValidAddress,
-} from '@masknet/web3-shared-evm'
+import { compact, first } from 'lodash-es'
 import { NetworkPluginID } from '@masknet/shared-base'
+import { queryClient } from '@masknet/shared-base-ui'
 import { isSameAddress } from '@masknet/web3-shared-base'
-import WalletABI from '@masknet/web3-contracts/abis/Wallet.json'
-import type { Wallet } from '@masknet/web3-contracts/types/Wallet.js'
-import { LOG_ROOT, MAX_ACCOUNT_LENGTH, THE_GRAPH_PROD } from '../constants.js'
-import { SmartPayBundlerAPI } from './BundlerAPI.js'
-import { SmartPayFunderAPI } from './FunderAPI.js'
-import { MulticallAPI } from '../../Multicall/index.js'
-import { Web3API } from '../../Connection/index.js'
+import { getSmartPayConstants, isValidAddress, type ChainId } from '@masknet/web3-shared-evm'
+import { Multicall } from '../../Multicall/index.js'
+import { EVMContractReadonly } from '../../Web3/EVM/apis/ContractReadonlyAPI.js'
+import { SmartPayBundler } from './BundlerAPI.js'
+import { SmartPayFunder } from './FunderAPI.js'
+import { ContractWallet } from '../libs/ContractWallet.js'
+import { Create2Factory } from '../libs/Create2Factory.js'
+import { MAX_ACCOUNT_LENGTH, THE_GRAPH_PROD } from '../constants.js'
+import { fetchJSON } from '../../helpers/fetchJSON.js'
 import type { OwnerAPI } from '../../entry-types.js'
-import { fetchJSON } from '../../entry-helpers.js'
 
-type OwnerShip = {
+interface OwnerShip {
     address: string
     owner: string
     id: string
     creator: string
 }
 
-export class SmartPayOwnerAPI implements OwnerAPI.Provider<NetworkPluginID.PLUGIN_EVM> {
-    private web3 = new Web3API()
-    private multicall = new MulticallAPI()
-    private bundler = new SmartPayBundlerAPI()
-    private funder = new SmartPayFunderAPI()
-
-    private async getEntryPoint(chainId: ChainId) {
-        const entryPoints = await this.bundler.getSupportedEntryPoints(chainId)
+export class SmartPayOwner {
+    private static async getEntryPoint(chainId: ChainId) {
+        const entryPoints = await SmartPayBundler.getSupportedEntryPoints(chainId)
         const entryPoint = first(entryPoints)
         if (!entryPoint || !isValidAddress(entryPoint)) throw new Error(`Not supported ${chainId}`)
         return entryPoint
     }
 
-    private createWalletContract(chainId: ChainId, address: string) {
-        return createContract<Wallet>(this.web3.getWeb3(chainId), address, WalletABI as AbiItem[])
+    private static createWalletContract(chainId: ChainId, address: string) {
+        return EVMContractReadonly.getWalletContract(address, {
+            chainId,
+        })
     }
 
-    private async createContractWallet(chainId: ChainId, owner: string) {
+    private static async createContractWallet(chainId: ChainId, owner: string) {
         if (!owner) throw new Error('No owner address.')
         return new ContractWallet(
             chainId,
@@ -55,7 +44,7 @@ export class SmartPayOwnerAPI implements OwnerAPI.Provider<NetworkPluginID.PLUGI
         )
     }
 
-    private async createCreate2Factory(chainId: ChainId, owner: string) {
+    private static async createCreate2Factory(chainId: ChainId, owner: string) {
         if (!owner) throw new Error('No owner address.')
 
         const { CREATE2_FACTORY_CONTRACT_ADDRESS } = getSmartPayConstants(chainId)
@@ -64,17 +53,17 @@ export class SmartPayOwnerAPI implements OwnerAPI.Provider<NetworkPluginID.PLUGI
         return new Create2Factory(CREATE2_FACTORY_CONTRACT_ADDRESS)
     }
 
-    private filterAccounts(accounts: Array<OwnerAPI.AbstractAccount<NetworkPluginID.PLUGIN_EVM>>) {
-        return compact(
-            accounts.map((x, index, array) => {
-                const allElement = array.filter((y) => isSameAddress(y.address, x.address))
-                if (allElement.length === 1) return x
-                return x.creator ? x : null
-            }),
-        )
+    private static filterAccounts(accounts: Array<OwnerAPI.AbstractAccount<NetworkPluginID.PLUGIN_EVM>>) {
+        const countMap = new Map<string, number>()
+        accounts.forEach((x) => {
+            const address = x.address.toLowerCase()
+            const count = countMap.get(address) || 0
+            countMap.set(address, count + 1)
+        })
+        return accounts.filter((x) => countMap.get(x.address.toLowerCase()) === 1 || x.creator)
     }
 
-    private createContractAccount(
+    private static createContractAccount(
         chainId: ChainId,
         address: string,
         owner: string,
@@ -100,11 +89,11 @@ export class SmartPayOwnerAPI implements OwnerAPI.Provider<NetworkPluginID.PLUGI
      * @param options
      * @returns
      */
-    private async getAccountsFromMulticall(chainId: ChainId, owner: string, options: string[]) {
+    private static async getAccountsFromMulticall(chainId: ChainId, owner: string, options: string[]) {
         const contracts = options.map((x) => this.createWalletContract(chainId, x)!)
         const names = Array.from<'owner'>({ length: options.length }).fill('owner')
-        const calls = this.multicall.createMultipleContractSingleData(contracts, names, [])
-        const results = await this.multicall.call(chainId, contracts, names, calls)
+        const calls = Multicall.createMultipleContractSingleData(contracts, names, [])
+        const results = await Multicall.call(chainId, contracts, names, calls)
         const accounts = results.flatMap((x) => (x.succeed && x.value ? x.value : ''))
 
         if (!accounts.length) {
@@ -118,7 +107,7 @@ export class SmartPayOwnerAPI implements OwnerAPI.Provider<NetworkPluginID.PLUGI
         )
     }
 
-    private async getAccountsFromTheGraph(chainId: ChainId, owner: string) {
+    private static async getAccountsFromTheGraph(chainId: ChainId, owner: string) {
         const response = await fetchJSON<{
             data: {
                 ownerShips: OwnerShip[]
@@ -142,86 +131,45 @@ export class SmartPayOwnerAPI implements OwnerAPI.Provider<NetworkPluginID.PLUGI
         )
     }
 
-    /**
-     * Query the on-chain changeOwner event from chainbase.
-     * @param chainId
-     * @param owner
-     * @returns
-     */
-    private async getAccountsFromChainbase(chainId: ChainId, owner: string) {
-        const { records: logs } = await fetchJSON<{ records: OwnerAPI.Log[]; count: number }>(
-            urlcat(LOG_ROOT, '/records', {
-                newOwnerAddress: padLeft(owner, 64),
-                size: MAX_ACCOUNT_LENGTH,
-                offset: 0,
-            }),
-        )
-
-        if (!logs) {
-            return []
-        }
-
-        return compact(
-            unionBy(logs, (x) => x.address.toLowerCase()).map((topic) => {
-                if (!isValidAddress(topic.address)) return
-
-                const previousOwner = toHex(topic.topic1.slice(-40))
-                if (!isValidAddress(previousOwner)) return
-
-                return this.createContractAccount(chainId, topic.address, owner, previousOwner, true)
-            }),
-        )
-    }
-
-    async getAccountByNonce(chainId: ChainId, owner: string, nonce: number) {
-        const create2Factory = await this.createCreate2Factory(chainId, owner)
-        const contractWallet = await this.createContractWallet(chainId, owner)
-        const address = create2Factory.derive(contractWallet.initCode, nonce)
-
-        const operations = await this.funder.getOperationsByOwner(chainId, owner)
-
-        // TODO: ensure account is deployed
-        return this.createContractAccount(
-            chainId,
-            address,
-            owner,
-            owner,
-            false,
-            operations.some((operation) => isSameAddress(operation.walletAddress, address)),
-        )
-    }
-
-    async getAccountsByOwner(
+    static async getAccountsByOwner(
         chainId: ChainId,
         owner: string,
         exact = true,
     ): Promise<Array<OwnerAPI.AbstractAccount<NetworkPluginID.PLUGIN_EVM>>> {
-        const create2Factory = await this.createCreate2Factory(chainId, owner)
-        const contractWallet = await this.createContractWallet(chainId, owner)
-        const operations = await this.funder.getOperationsByOwner(chainId, owner)
+        const accounts = await queryClient.fetchQuery({
+            queryKey: ['smart-pay', 'get-accounts-by-owner', chainId, owner, exact],
+            gcTime: 1000_000,
+            queryFn: async () => {
+                const create2Factory = await this.createCreate2Factory(chainId, owner)
+                const contractWallet = await this.createContractWallet(chainId, owner)
+                const operations = await SmartPayFunder.getOperationsByOwner(chainId, owner)
 
-        const allSettled = await Promise.allSettled([
-            this.getAccountsFromMulticall(
-                chainId,
-                owner,
-                create2Factory.deriveUntil(contractWallet.initCode, MAX_ACCOUNT_LENGTH),
-            ),
-            this.getAccountsFromTheGraph(chainId, owner),
-        ])
+                const allSettled = await Promise.allSettled([
+                    this.getAccountsFromMulticall(
+                        chainId,
+                        owner,
+                        create2Factory.deriveUntil(contractWallet.initCode, MAX_ACCOUNT_LENGTH),
+                    ),
+                    this.getAccountsFromTheGraph(chainId, owner),
+                ])
 
-        const result = allSettled
-            .flatMap((x) => (x.status === 'fulfilled' ? x.value : []))
-            .map((y) => ({
-                ...y,
-                funded: y.creator
-                    ? operations.some((operation) => isSameAddress(operation.walletAddress, y.address))
-                    : y.funded,
-            }))
+                const result = allSettled
+                    .flatMap((x) => (x.status === 'fulfilled' ? x.value : []))
+                    .map((y) => ({
+                        ...y,
+                        funded:
+                            y.creator ?
+                                operations.some((operation) => isSameAddress(operation.walletAddress, y.address))
+                            :   y.funded,
+                    }))
 
-        return this.filterAccounts(result).filter((x) => (exact ? isSameAddress(x.owner, owner) : true))
+                return this.filterAccounts(result).filter((x) => (exact ? isSameAddress(x.owner, owner) : true))
+            },
+        })
+        return accounts ?? []
     }
 
-    async getAccountsByOwners(
+    static async getAccountsByOwners(
         chainId: ChainId,
         owners: string[],
         exact = true,

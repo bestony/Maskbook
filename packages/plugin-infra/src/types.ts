@@ -1,46 +1,24 @@
 import type React from 'react'
 import type { Option, Result } from 'ts-results-es'
-import type { Subscription } from 'use-subscription'
-import type { JsonRpcPayload, JsonRpcResponse } from 'web3-core-helpers'
-/* eslint @dimensiondev/unicode-specific-set: ["error", { "only": "code" }] */
-import type { UnboundedRegistry } from '@dimensiondev/holoflows-kit'
+import type { Emitter } from '@servie/events'
+/* eslint @masknet/unicode-specific-set: ["error", { "only": "code" }] */
 import type {
     BindingProof,
     ECKeyIdentifier,
-    EnhanceableSite,
-    ExtensionSite,
     NetworkPluginID,
-    NextIDPlatform,
-    PostIdentifier,
-    PersonaIdentifier,
-    PersonaInformation,
     PluginID,
-    PopupRoutes,
-    DashboardRoutes,
     ProfileIdentifier,
     ScopedStorage,
-    SignType,
-    NFTAvatarEvent,
-    ValueRefWithReady,
-    Wallet,
     SocialAccount,
     SocialIdentity,
+    BooleanPreference,
+    EnhanceableSite,
 } from '@masknet/shared-base'
 import type { TypedMessage } from '@masknet/typed-message'
 import type { Web3Helper } from '@masknet/web3-helpers'
-import type {
-    ChainDescriptor,
-    NetworkDescriptor,
-    ProviderDescriptor,
-    SearchResult,
-    ThemeSettings,
-    Web3EnableRequirement,
-    Web3State,
-    Web3UI,
-} from '@masknet/web3-shared-base'
-import type { TransactionOptions } from '@masknet/web3-shared-evm'
-import type { Emitter } from '@servie/events'
+import type { SearchResult } from '@masknet/web3-shared-base'
 import type { CompositionType } from './entry-content-script.js'
+import type { JSX } from 'react'
 
 export declare namespace Plugin {
     /**
@@ -89,63 +67,9 @@ export declare namespace Plugin {
      * DeferredDefinition should not contain any functionality of the plugin expects the loader.
      * If the plugin is not providing some of the functionality, please can omit that field.
      */
-    export interface DeferredDefinition<
-        ChainId = unknown,
-        AddressType = unknown,
-        SchemaType = unknown,
-        ProviderType = unknown,
-        NetworkType = unknown,
-        Signature = unknown,
-        GasOption = unknown,
-        Block = unknown,
-        Transaction = unknown,
-        TransactionReceipt = unknown,
-        TransactionDetailed = unknown,
-        TransactionSignature = unknown,
-        TransactionParameter = unknown,
-        Web3 = unknown,
-        Web3Provider = unknown,
-    > extends Shared.Definition<ChainId, SchemaType, ProviderType, NetworkType> {
-        /** Load the SNSAdaptor part of the plugin. */
-        SNSAdaptor?: Loader<
-            SNSAdaptor.Definition<
-                ChainId,
-                AddressType,
-                SchemaType,
-                ProviderType,
-                NetworkType,
-                Signature,
-                GasOption,
-                Block,
-                Transaction,
-                TransactionReceipt,
-                TransactionDetailed,
-                TransactionSignature,
-                TransactionParameter,
-                Web3,
-                Web3Provider
-            >
-        >
-        /** Load the Dashboard part of the plugin. */
-        Dashboard?: Loader<
-            Dashboard.Definition<
-                ChainId,
-                AddressType,
-                SchemaType,
-                ProviderType,
-                NetworkType,
-                Signature,
-                GasOption,
-                Block,
-                Transaction,
-                TransactionReceipt,
-                TransactionDetailed,
-                TransactionSignature,
-                TransactionParameter,
-                Web3,
-                Web3Provider
-            >
-        >
+    export interface DeferredDefinition extends Shared.Definition {
+        /** Load the Site Adaptor part of the plugin. */
+        SiteAdaptor?: Loader<SiteAdaptor.Definition>
         /** Load the Worker part of the plugin. */
         Worker?: Loader<Worker.Definition>
     }
@@ -162,75 +86,10 @@ export namespace Plugin.Shared {
     }
 
     export interface SharedUIContext extends SharedContext {
-        allPersonas?: Subscription<PersonaInformation[]>
-        /** The selected persona */
-        currentPersona: Subscription<PersonaIdentifier | undefined>
-        /** Get all wallets */
-        wallets: Subscription<Wallet[]>
-
-        /** Open Dashboard with a new window */
-        openDashboard(route?: DashboardRoutes, search?: string): Promise<any>
-
-        /** Open popup window */
-        openPopupWindow(route?: PopupRoutes, params?: Record<string, any>): Promise<void>
-
-        /** Close popup window */
-        closePopupWindow(): Promise<void>
-
-        /** Fetch json from background */
-        fetchJSON<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T>
-        /** Open popup connect window */
-        openPopupConnectWindow(): Promise<void>
-
-        /** Open walletconnect dialog */
-        openWalletConnectDialog(uri: string, callback: () => void): void
-
-        /** Close walletconnect dialog */
-        closeWalletConnectDialog(): void
-
-        /** Select a Mask Wallet account */
-        selectAccount(): Promise<Array<{ address: string; owner?: string; identifier?: ECKeyIdentifier }>>
-
-        /** Record which sites are connected to the Mask wallet  */
-        recordConnectedSites(site: EnhanceableSite | ExtensionSite, connected: boolean): Promise<void>
-
-        /** Sign a message with persona (w or w/o popups) */
-        signWithPersona<T>(type: SignType, message: T, identifier?: ECKeyIdentifier, silent?: boolean): Promise<string>
-
-        /** Sign a message with wallet */
-        signWithWallet<T>(type: SignType, message: T, account?: string): Promise<string>
-
-        /** Get all wallets */
-        getWallets(): Promise<Wallet[]>
-
-        /** Add a new wallet */
-        addWallet(id: string, wallet: Wallet): Promise<void>
-
-        /** Update a wallet */
-        updateWallet(id: string, wallet?: Partial<Wallet>): Promise<void>
-
-        /** Remove a old wallet */
-        removeWallet(id: string, password?: string): Promise<void>
-
-        /** Send request to native API, for a risky request will be added into the waiting queue. */
-        send(payload: JsonRpcPayload, options?: TransactionOptions): Promise<JsonRpcResponse>
-        /** Confirm a request */
-        confirmRequest(
-            payload: JsonRpcPayload,
-            options?: { disableClose?: boolean; popupsWindow?: boolean },
-        ): Promise<JsonRpcResponse | void>
-        /** Reject a request */
-        rejectRequest(payload: JsonRpcPayload): Promise<void>
-
-        hasPaymentPassword(): Promise<boolean>
+        setMinimalMode(enabled: boolean): void
     }
 
-    export interface Definition<
-        ChainId = unknown,
-        SchemaType = unknown,
-        ProviderType = unknown,
-        NetworkType = unknown,
-    > {
+    export interface Definition {
         /**
          * ID of the plugin. It should be unique.
          * @example "com.mask.wallet"
@@ -238,12 +97,12 @@ export namespace Plugin.Shared {
         ID: PluginID
         /**
          * The human readable name of the plugin.
-         * @example { i18nKey: "name", fallback: "Never gonna give you up" }
+         * @example { fallback: "Never gonna give you up" }
          */
         name: I18NStringField
         /**
          * A brief description of this plugin.
-         * @example { i18nKey: "description", fallback: "This plugin is going to replace every link in the page to https://www.youtube.com/watch?v=dQw4w9WgXcQ" }
+         * @example { fallback: "This plugin is going to replace every link in the page to https://www.youtube.com/watch?v=dQw4w9WgXcQ" }
          */
         description?: I18NStringField
         /**
@@ -269,12 +128,6 @@ export namespace Plugin.Shared {
         inMinimalModeByDefault?: boolean
         /** i18n resources of this plugin */
         i18n?: I18NResource
-        /** Introduce sub-network information. */
-        declareWeb3Chains?: Array<ChainDescriptor<ChainId, SchemaType, NetworkType>>
-        /** Introduce networks information. */
-        declareWeb3Networks?: Array<NetworkDescriptor<ChainId, NetworkType>>
-        /** Introduce wallet providers information. */
-        declareWeb3Providers?: Array<ProviderDescriptor<ChainId, ProviderType>>
         /**
          * Declare what this plugin provides.
          *
@@ -282,24 +135,22 @@ export namespace Plugin.Shared {
          */
         contribution?: Contribution
         /** Declare ability this plugin supported. */
-        ability?: Ability
+        ability?: never
     }
 
     /**
-     * This part is shared between Dashboard, SNSAdaptor and Worker part
+     * This part is shared between Site Adaptor and Worker part
      * which you should include the information above in those three parts.
      */
-    export interface DefinitionDeferred<Context extends SharedContext = SharedContext> extends Definition, Utilities {
+    export interface DefinitionDeferred<Context extends SharedContext = SharedContext> extends Definition {
         /**
          * This function is called when the plugin is initialized.
          *
          * The plugin must clean up all side effects it creates when the `AbortSignal` provided aborts
          * to make sure the plugin can be reloaded safely.
          */
-        init(signal: AbortSignal, context: Context): void | Promise<void>
+        init?(signal: AbortSignal, context: Context): void | Promise<void>
     }
-
-    export interface Utilities {}
 
     /** The publisher of the plugin */
     export interface Publisher {
@@ -319,10 +170,17 @@ export namespace Plugin.Shared {
      */
     export interface EnableRequirement {
         target: ReleaseStages
-        /** The SNS Network this plugin supports. */
-        networks: SupportedNetworksDeclare
+        /** The website this plugin supports. */
+        supports: SupportedSitesDeclare
         /** The Web3 Network this plugin supports */
-        web3?: Web3EnableRequirement
+        web3?: Partial<
+            Record<
+                NetworkPluginID,
+                {
+                    supportedChainIds?: number[]
+                }
+            >
+        >
         /**
          * Requested origins.
          * Only put necessary permissions here.
@@ -331,19 +189,21 @@ export namespace Plugin.Shared {
         host_permissions?: string[]
     }
 
-    export interface SupportedNetworksDeclare {
+    export interface SupportedSitesDeclare {
         /**
-         * opt-in means the listed networks is supported.
-         * out-out means the listed networks is not supported.
+         * opt-in means the listed site is supported.
+         * out-out means the listed site is not supported.
          */
         type: 'opt-in' | 'opt-out'
-        networks: Partial<Record<CurrentSNSNetwork, boolean>>
+        sites: Partial<Record<EnhanceableSite, boolean>>
     }
 
     export type I18NLanguage = string
     export type I18NKey = string
     export type I18NValue = string
-    export type I18NResource = Record<I18NLanguage, Record<I18NKey, I18NValue>>
+    export type I18NResource = LinguiI18NResource | LinguiI18NResource[]
+    export type I18NLanguageResourcePair = Record<I18NLanguage, Record<I18NKey, I18NValue>>
+    export type LinguiI18NResource = Record<I18NLanguage, { messages: any }>
 
     export interface Contribution {
         /** This plugin can recognize and react to the following metadata keys. */
@@ -351,106 +211,28 @@ export namespace Plugin.Shared {
         /** This plugin can recognize and enhance the post that matches the following matchers. */
         postContent?: ReadonlySet<RegExp | string>
     }
-
-    export interface Ability {}
 }
 
-/** This part runs in the SNSAdaptor */
-export namespace Plugin.SNSAdaptor {
-    export interface SNSAdaptorContext extends Shared.SharedUIContext {
-        lastRecognizedProfile: Subscription<IdentityResolved | undefined>
-        currentVisitingProfile: Subscription<IdentityResolved | undefined>
-        NFTAvatarTimelineUpdated: UnboundedRegistry<NFTAvatarEvent>
-        allPersonas?: Subscription<PersonaInformation[]>
-        themeSettings: Subscription<ThemeSettings | undefined>
-        /** The default theme settings. */
-        getThemeSettings: () => ThemeSettings | undefined
-        getNextIDPlatform: () => NextIDPlatform | undefined
-        getPersonaAvatar: (identifier: ECKeyIdentifier | null | undefined) => Promise<string | null | undefined>
-        getSocialIdentity: (
-            platform: NextIDPlatform,
-            identity: IdentityResolved | undefined,
-        ) => Promise<SocialIdentity | undefined>
-        ownProofChanged: UnboundedRegistry<void>
-        ownPersonaChanged: UnboundedRegistry<void>
-        setMinimalMode: (id: string, enabled: boolean) => Promise<void>
-        currentPersonaIdentifier: ValueRefWithReady<string>
+/** This part runs in the Site Adaptor */
+export namespace Plugin.SiteAdaptor {
+    export interface SiteAdaptorContext extends Shared.SharedUIContext {}
 
-        getPostURL?: (identifier: PostIdentifier) => URL | null
-        share?: (text: string) => void
-
-        queryPersonaByProfile: (id: ProfileIdentifier) => Promise<PersonaInformation | undefined>
-        connectPersona: () => Promise<void>
-        createPersona: () => void
-    }
-
-    export type SelectProviderDialogEvent =
-        | {
-              open: true
-              pluginID?: NetworkPluginID
-          }
-        | {
-              open: false
-              address?: string
-          }
-
-    export interface Definition<
-        ChainId = unknown,
-        AddressType = unknown,
-        SchemaType = unknown,
-        ProviderType = unknown,
-        NetworkType = unknown,
-        Signature = unknown,
-        GasOption = unknown,
-        Block = unknown,
-        Operation = unknown,
-        Transaction = unknown,
-        TransactionReceipt = unknown,
-        TransactionDetailed = unknown,
-        TransactionSignature = unknown,
-        TransactionParameter = unknown,
-        Web3 = unknown,
-        Web3Provider = unknown,
-    > extends Shared.DefinitionDeferred<SNSAdaptorContext> {
+    export type ProfileTabSlot = 'profile-page' | 'search' | 'profile-card'
+    export interface Definition extends GeneralUI.Definition, Shared.DefinitionDeferred<SiteAdaptorContext> {
         /** This UI will be rendered for each post found. */
-        PostInspector?: InjectUI<{}>
+        PostInspector?: InjectUI
         /** This UI will be rendered for action of each post found. */
-        PostActions?: InjectUI<{}>
+        PostActions?: InjectUI
         /** This UI will be rendered for each decrypted post. */
         DecryptedInspector?: InjectUI<{
             message: TypedMessage
         }>
-        /** This UI will be rendered into the global scope of an SNS. */
-        GlobalInjection?: InjectUI<{}>
-        /** This UI will be rendered under the Search result of SNS */
+        /** This UI will be rendered into the global scope of the site. */
+        GlobalInjection?: InjectUI
+        /** This UI will be rendered under the Search result of the site */
         SearchResultInspector?: SearchResultInspector
-        /** This UI will be rendered under the Search result of SNS. */
+        /** This UI will be rendered under the Search result of the site. */
         SearchResultTabs?: SearchResultTab[]
-        /**
-         * @deprecated Use SearchResultInspector stead
-         * This is the detailed UI content that will be rendered under the Search of the SNS. */
-        SearchResultContent?: SearchResultContent
-        /** This is a chunk of web3 UIs to be rendered into various places of Mask UI. */
-        Web3UI?: Web3UI<ChainId, ProviderType, NetworkType>
-        /** This is the context of the currently chosen network. */
-        Web3State?: Web3State<
-            ChainId,
-            AddressType,
-            SchemaType,
-            ProviderType,
-            NetworkType,
-            Signature,
-            GasOption,
-            Block,
-            Operation,
-            Transaction,
-            TransactionReceipt,
-            TransactionDetailed,
-            TransactionSignature,
-            TransactionParameter,
-            Web3,
-            Web3Provider
-        >
         /** This UI will be an entry to the plugin in the Composition dialog of Mask. */
         readonly CompositionDialogEntry?: CompositionDialogEntry
         /** This UI will be use when there is known badges. */
@@ -474,8 +256,12 @@ export namespace Plugin.SNSAdaptor {
         // }
         /** This UI will be rendered components on the tips realm */
         TipsRealm?: TipsRealm
-        /** This UI will be rendered components on the tips realm */
+        /** This UI will be rendered components on the Lens realm */
         Lens?: LensWidget
+        /** This UI will be rendered components on the Lens realm */
+        Farcaster?: FarcasterWidget
+        Badges?: BadgesWidget
+        NameWidget?: NameWidget
         /** This UI will be rendered as plugin wrapper page */
         wrapperProps?: PluginWrapperProps
         /**
@@ -483,12 +269,7 @@ export namespace Plugin.SNSAdaptor {
          */
         enhanceTag?: {
             onClick?: (kind: 'cash' | 'hash', content: string, event: React.MouseEvent<HTMLAnchorElement>) => void
-            onHover?: (
-                kind: 'cash' | 'hash',
-                content: string,
-                event: React.MouseEvent<HTMLAnchorElement>,
-                chainId: ChainId,
-            ) => () => void
+            onHover?: (kind: 'cash' | 'hash', content: string, event: React.MouseEvent<HTMLAnchorElement>) => () => void
         }
     }
 
@@ -563,9 +344,8 @@ export namespace Plugin.SNSAdaptor {
          */
         RenderEntryComponent?: (props: {
             disabled: boolean
-            tooltipHint?: string
-            onClick?: (walletConnectedCallback?: () => void) => void
-            popperBoundary?: HTMLElement | null
+            tooltipHint?: React.ReactNode
+            onClick?: (walletConnectedCallback?: () => void, requiredSupportPluginID?: NetworkPluginID) => void
         }) => JSX.Element | null
         /**
          * Used to order the applications on the board
@@ -609,6 +389,8 @@ export namespace Plugin.SNSAdaptor {
             name: I18NFieldOrReactNode
             description: I18NFieldOrReactNode
         }>
+
+        hiddenInList?: boolean
     }
 
     export interface PluginWrapperProps {
@@ -630,7 +412,7 @@ export namespace Plugin.SNSAdaptor {
                 resultList: Array<SearchResult<Web3Helper.ChainIdAll, Web3Helper.SchemaTypeAll>>
                 currentResult: SearchResult<Web3Helper.ChainIdAll, Web3Helper.SchemaTypeAll>
                 isProfilePage?: boolean
-                identity?: SocialIdentity
+                identity?: SocialIdentity | null
             }>
         }
         Utils?: {
@@ -690,7 +472,7 @@ export namespace Plugin.SNSAdaptor {
              * The injected avatar decorator component
              */
             Decorator: InjectUI<{
-                identity?: SocialIdentity
+                identity?: SocialIdentity | null
                 userId?: string
                 persona?: string
                 socialAccounts?: Array<SocialAccount<Web3Helper.ChainIdAll>>
@@ -709,7 +491,7 @@ export namespace Plugin.SNSAdaptor {
              * If it returns false, this cover will not be displayed.
              */
             shouldDisplay?(
-                identity?: SocialIdentity,
+                identity?: SocialIdentity | null,
                 socialAccounts?: Array<SocialAccount<Web3Helper.ChainIdAll>>,
                 sourceType?: AvatarRealmSourceType,
             ): boolean
@@ -718,11 +500,12 @@ export namespace Plugin.SNSAdaptor {
 
     export enum TipsSlot {
         FollowButton = 'follow',
-        FocusingPost = 'focusing-post',
         Post = 'post',
         Profile = 'profile',
         MirrorMenu = 'mirror-menu',
         MirrorEntry = 'mirror-entry',
+        MirrorProfile = 'mirror-profile',
+        MirrorVerification = 'mirror-verification',
     }
 
     export interface TipsRealmOptions {
@@ -752,6 +535,19 @@ export namespace Plugin.SNSAdaptor {
         Sidebar = 'sidebar',
     }
 
+    export enum FarcasterSlot {
+        ProfileName = 'profile-name',
+        Post = 'post',
+        Sidebar = 'sidebar',
+    }
+
+    export enum BadgesSlot {
+        ProfileName = 'profile-name',
+        Post = 'post',
+        Sidebar = 'sidebar',
+    }
+
+    /** @deprecated */
     export interface LensOptions {
         identity?: ProfileIdentifier
         slot: LensSlot
@@ -759,7 +555,23 @@ export namespace Plugin.SNSAdaptor {
         /** To update enabled/disabled status */
         onStatusUpdate?(disabled: boolean): void
     }
+    /** @deprecated */
+    export interface FarcasterOptions {
+        identity?: ProfileIdentifier
+        slot: FarcasterSlot
+        accounts?: string[][]
+        /** To update enabled/disabled status */
+        onStatusUpdate?(disabled: boolean): void
+    }
 
+    export interface SocialBadgeOptions {
+        identity?: ProfileIdentifier
+        slot: BadgesSlot
+        /** To update enabled/disabled status */
+        onStatusUpdate?(disabled: boolean): void
+    }
+
+    /** @deprecated */
     export interface LensWidget {
         ID: string
         UI?: {
@@ -768,6 +580,48 @@ export namespace Plugin.SNSAdaptor {
              */
             Content: InjectUI<LensOptions>
         }
+    }
+    /** @deprecated */
+    export interface FarcasterWidget {
+        ID: string
+        UI?: {
+            /**
+             * The injected Lens Content component
+             */
+            Content: InjectUI<FarcasterOptions>
+        }
+    }
+    export interface BadgesWidget {
+        ID: string
+        UI?: {
+            /**
+             * The injected Social Badge Content component
+             */
+            Content: InjectUI<SocialBadgeOptions>
+        }
+    }
+
+    export enum NameWidgetSlot {
+        ProfileName = 'profile-name',
+        Post = 'post',
+        Sidebar = 'sidebar',
+    }
+    export interface NameWidgetOptions {
+        slot: NameWidgetSlot
+        userId?: string
+        identity?: ProfileIdentifier
+        /** To update enabled/disabled status */
+        onStatusUpdate?(disabled: boolean): void
+    }
+    export interface NameWidget {
+        ID: string
+        UI?: {
+            /**
+             * The injected Lens Content component
+             */
+            Content: InjectUI<NameWidgetOptions>
+        }
+        priority: number
     }
 
     export interface ProfileSlider {
@@ -784,7 +638,7 @@ export namespace Plugin.SNSAdaptor {
         /**
          * The injected UI
          */
-        children: InjectUI<{}>
+        children: InjectUI
     }
 
     export interface ProfileTab {
@@ -805,7 +659,7 @@ export namespace Plugin.SNSAdaptor {
              * The injected tab content
              */
             TabContent: InjectUI<{
-                identity?: SocialIdentity
+                identity?: SocialIdentity | null
                 socialAccount?: SocialAccount<Web3Helper.ChainIdAll>
             }>
         }
@@ -813,7 +667,10 @@ export namespace Plugin.SNSAdaptor {
             /**
              * If it returns false, this tab will not be displayed.
              */
-            shouldDisplay?(identity?: SocialIdentity, socialAccount?: SocialAccount<Web3Helper.ChainIdAll>): boolean
+            shouldDisplay?(
+                identity?: SocialIdentity | null,
+                socialAccount?: SocialAccount<Web3Helper.ChainIdAll>,
+            ): boolean
             /**
              * Filter social address.
              */
@@ -865,7 +722,6 @@ export namespace Plugin.SNSAdaptor {
 
     export interface SettingsTabUIProps {
         onClose: () => void
-        onOpenPopup: (route?: PopupRoutes, params?: Record<string, any>) => void
         bindingWallets?: BindingProof[]
         currentPersona?: ECKeyIdentifier
         pluginID: PluginID
@@ -897,64 +753,12 @@ export namespace Plugin.SNSAdaptor {
         label: I18NStringField | string
 
         UI?: {
-            Widget: InjectUI<{}>
+            Widget: InjectUI
         }
     }
 
     export interface WidgetRegistry {
-        example: {}
-    }
-}
-
-/** This part runs in the dashboard */
-export namespace Plugin.Dashboard {
-    export interface DashboardContext extends Shared.SharedUIContext {}
-
-    // As you can see we currently don't have so much use case for an API here.
-    export interface Definition<
-        ChainId = unknown,
-        AddressType = unknown,
-        SchemaType = unknown,
-        ProviderType = unknown,
-        NetworkType = unknown,
-        Signature = unknown,
-        GasOption = unknown,
-        Block = unknown,
-        Operation = unknown,
-        Transaction = unknown,
-        TransactionReceipt = unknown,
-        TransactionDetailed = unknown,
-        TransactionSignature = unknown,
-        TransactionParameter = unknown,
-        Web3 = unknown,
-        Web3Provider = unknown,
-        WalletProvider = unknown,
-    > extends Shared.DefinitionDeferred<DashboardContext> {
-        /** This UI will be injected into the global scope of the Dashboard. */
-        GlobalInjection?: InjectUI<{}>
-        /** This is a chunk of web3 UIs to be rendered into various places of Mask UI. */
-        Web3UI?: Web3UI<ChainId, ProviderType, NetworkType>
-        /** This is the context of the currently chosen network. */
-        Web3State?: Web3State<
-            ChainId,
-            AddressType,
-            SchemaType,
-            ProviderType,
-            NetworkType,
-            Signature,
-            GasOption,
-            Block,
-            Operation,
-            Transaction,
-            TransactionReceipt,
-            TransactionDetailed,
-            TransactionSignature,
-            TransactionParameter,
-            Web3,
-            Web3Provider
-        >
-        /** Plugin DO NOT need to define this. This will be auto set by the plugin host. */
-        __general_ui__?: GeneralUI.DefinitionDeferred
+        example: any
     }
 }
 
@@ -962,6 +766,16 @@ export namespace Plugin.Dashboard {
 export namespace Plugin.Worker {
     export interface WorkerContext extends Shared.SharedContext {
         getDatabaseStorage<T extends IndexableTaggedUnion>(): DatabaseStorage<T>
+        /**
+         * Start the background service.
+         * @param impl Implementation of the RPC
+         */
+        startService(impl: object): void
+        /**
+         * Start the background generator service.
+         * @param impl Implementation of the RPC
+         */
+        startGeneratorService(impl: object): void
     }
 
     export interface Definition extends Shared.DefinitionDeferred<WorkerContext> {
@@ -1091,24 +905,25 @@ export namespace Plugin.Worker {
 
 /** This part defines the plugin part that does not context aware. */
 export namespace Plugin.GeneralUI {
-    export interface DefinitionDeferred {
+    export interface Definition {
+        /** This UI will be injected into the global scope of the target page. */
+        GlobalInjection?: InjectUI
         /**
          * Render metadata in many different environments.
          *
          * 1. Environment
          *
-         * The render component MUST NOT assume they are running in a specific environment (e.g. SNS Adaptor).
+         * The render component MUST NOT assume they are running in a specific environment (e.g. Site Adaptor).
          * Plugin messages and RPC MAY NOT working.
          *
          * It MUST NOT assume the environment using the `context` props.
          * ALL actions MUST BE DONE with the given props.
          *
          * Here is some example of *possible* environments.
-         * - inside SNS Adaptor, given "composition" context, running in the CompositionDialog.
-         * - inside SNS Adaptor, given "post" context,        running in the DecryptedPost.
-         * - inside Dashboard,   given "post" context,        running in the PostHistory as the previewer.
-         * - inside Popups,      given "post" context,        running in the PostInspector (Isolated mode).
-         * - on mask.io,         given "post" context,        allowing preview the message without extension installed.
+         * - inside site adaptor, given "composition" context, running in the CompositionDialog.
+         * - inside site adaptor, given "post" context,        running in the DecryptedPost.
+         * - inside Popups,       given "post" context,        running in the PostInspector (Isolated mode).
+         * - on mask.io,          given "post" context,        allowing preview the message without extension installed.
          *
          * 2. Contexts
          *
@@ -1122,7 +937,7 @@ export namespace Plugin.GeneralUI {
          * The render component MUST BE a ForwardRefExotic React Component
          * that support operations defined in `Plugin.ContextFree.MetadataRender.RenderActions`
          */
-        metadataRender: MetadataRender.StaticRender | MetadataRender.DynamicRender
+        metadataRender?: MetadataRender.StaticRender | MetadataRender.DynamicRender
     }
 
     export namespace MetadataRender {
@@ -1188,7 +1003,7 @@ export namespace Plugin {
      * - InjectUIReact: Optimized for React component.
      * - InjectUIRaw: The fallback choice if a React component doesn't apply here.
      */
-    export type InjectUI<Props> = InjectUIRaw<Props> | InjectUIReact<Props>
+    export type InjectUI<Props = Record<string, never>> = InjectUIRaw<Props> | InjectUIReact<Props>
     /**
      *
      * @example
@@ -1220,26 +1035,11 @@ export type IndexableTaggedUnion = {
 }
 
 export interface I18NStringField {
-    /** The i18n key of the string content. */
-    i18nKey?: string
     /** The fallback content to display if there is no i18n string found. */
     fallback: string
 }
 
 export type I18NFieldOrReactNode = I18NStringField | React.ReactNode
-
-/**
- * The current running SocialNetwork.
- */
-export enum CurrentSNSNetwork {
-    Unknown = 0,
-    Facebook = 1,
-    Twitter = 2,
-    Instagram = 3,
-    Minds = 4,
-
-    __SPA__ = 99,
-}
 
 export interface IdentityResolved {
     nickname?: string
@@ -1248,6 +1048,16 @@ export interface IdentityResolved {
     homepage?: string
     identifier?: ProfileIdentifier
     isOwner?: boolean
+    /** Required to claim redpacket */
+    profileId?: string
+    /** Firefly only */
+    lensToken?: string
+    /** Firefly only */
+    farcasterMessage?: string
+    /** Firefly only */
+    farcasterSignature?: string
+    /** Firefly only */
+    farcasterSigner?: string
 }
 
 /**
@@ -1255,22 +1065,27 @@ export interface IdentityResolved {
  */
 // ---------------------------------------------------
 export namespace Plugin.__Host {
-    export interface Host<Context = undefined> {
+    export interface Host<Definition, Context> {
         /**
          * Control if the plugin is in the minimal mode.
          *
          * If it is in the minimal mode, it will be omitted in some cases.
          */
         minimalMode: EnabledStatusReporter
+        /**
+         * Control if the plugin is disabled or not.
+         */
+        disabled: EnabledStatusReporter
 
         addI18NResource(pluginID: string, resources: Shared.I18NResource): void
 
-        createContext(id: string, signal: AbortSignal): Context
+        createContext(id: string, definition: Definition, signal: AbortSignal): Context
 
         signal?: AbortSignal
         permission: PermissionReporter
     }
 
+    export interface WorkerContext extends Omit<Worker.WorkerContext, 'startService' | 'startGeneratorService'> {}
     export interface PermissionReporter {
         hasPermission(host_permission: string[]): Promise<boolean>
 
@@ -1285,10 +1100,4 @@ export namespace Plugin.__Host {
             disabled: [id: string]
         }>
     }
-}
-
-export enum BooleanPreference {
-    False = 0,
-    Default = 1,
-    True = 2,
 }

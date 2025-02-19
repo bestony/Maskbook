@@ -11,7 +11,7 @@ const useStyles = makeStyles()((theme) => {
     }
 })
 
-export interface SettingsBoardProps {
+interface SettingsBoardProps {
     disableGasPrice?: boolean
     disableGasLimit?: boolean
     disableSlippageTolerance?: boolean
@@ -26,13 +26,13 @@ export function SettingsBoard(props: SettingsBoardProps) {
 
     useEffect(() => {
         onChange?.({
-            transaction: (transaction
-                ? {
-                      ...transaction,
-                      ...transactionOptions,
-                  }
-                : undefined) as Web3Helper.TransactionAll | undefined,
-            slippageTolerance: slippageTolerance * 100, // convert to bips
+            transaction: (transaction ?
+                {
+                    ...transaction,
+                    ...transactionOptions,
+                }
+            :   undefined) as Web3Helper.TransactionAll | undefined,
+            slippageTolerance: slippageTolerance * 100,
         })
     }, [JSON.stringify(transaction), JSON.stringify(transactionOptions), slippageTolerance, onChange])
 

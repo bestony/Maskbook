@@ -1,46 +1,63 @@
-import { useSharedI18N } from '@masknet/shared'
-import { NextIDPlatform } from '@masknet/shared-base'
+import { type NextIDPlatform } from '@masknet/shared-base'
 import { makeStyles, ShadowRootTooltip } from '@masknet/theme'
 import { resolveNextIDPlatformName } from '@masknet/web3-shared-base'
 import { Typography } from '@mui/material'
-import type { ReactElement } from 'react'
+import { useRef, cloneElement, useEffect, useState, type ReactElement, type RefObject } from 'react'
+import { Trans } from '@lingui/react/macro'
 
-interface StyleProps {
-    isMenuScroll?: boolean
-    hidden?: boolean
-}
-
-const useStyles = makeStyles<StyleProps>()((theme, { hidden = false }) => {
-    return {
-        tooltip: {
-            visibility: hidden ? 'hidden' : 'visible',
-            backgroundColor: theme.palette.maskColor.publicMain,
-            color: theme.palette.maskColor.white,
-        },
-        arrow: {
-            color: theme.palette.maskColor.publicMain,
-        },
-    }
+const useStyles = makeStyles()({
+    title: {
+        padding: '6px 2px',
+    },
 })
-interface SocialTooltipProps {
+
+interface SocialTooltipProps<T> {
     platform?: NextIDPlatform
-    hidden?: boolean
-    children: ReactElement
+    // cloneElement is used.
+    // eslint-disable-next-line @typescript-eslint/no-restricted-types
+    children: ReactElement<T & { ref: RefObject<HTMLElement | null> }>
 }
-export function SocialTooltip({ children, hidden = false, platform = NextIDPlatform.NextID }: SocialTooltipProps) {
-    const { classes } = useStyles({ hidden })
-    const t = useSharedI18N()
+export function SocialTooltip<T extends object>({ children, platform }: SocialTooltipProps<T>) {
+    const { classes } = useStyles()
+    const [inView, setInView] = useState(false)
+    const ref = useRef<HTMLElement>(null)
+    const title =
+        platform ?
+            <Typography className={classes.title} fontSize={14}>
+                <Trans>Data source is retrieved from {resolveNextIDPlatformName(platform) || platform}.</Trans>
+            </Typography>
+        :   null
+
+    useEffect(() => {
+        const el = ref.current
+        if (!el) return
+        const observer = new IntersectionObserver(
+            (entries) => {
+                const [entry] = entries
+                setInView(entry.isIntersecting)
+            },
+            {
+                root: null,
+                rootMargin: '0px',
+            },
+        )
+
+        observer.observe(el)
+        return () => observer.unobserve(el)
+    }, [])
+
     return (
         <ShadowRootTooltip
-            classes={{ tooltip: classes.tooltip, arrow: classes.arrow }}
+            PopperProps={{ sx: { display: inView ? 'block' : 'none' } }}
+            disableInteractive
             arrow
             placement="top"
-            title={
-                <Typography style={{ padding: '6px 2px', whiteSpace: 'nowrap' }} fontSize={14}>
-                    {t.account_icon_tooltips({ source: resolveNextIDPlatformName(platform) })}
-                </Typography>
-            }>
-            {children}
+            title={title}>
+            {cloneElement(
+                children,
+                // eslint-disable-next-line react-compiler/react-compiler
+                { ...children.props, ref },
+            )}
         </ShadowRootTooltip>
     )
 }

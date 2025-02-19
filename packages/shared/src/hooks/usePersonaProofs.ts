@@ -1,53 +1,32 @@
-import type { WebExtensionMessage } from '@dimensiondev/holoflows-kit'
-import { type BindingProof, EMPTY_LIST, type MaskEvents } from '@masknet/shared-base'
+import { useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { NextIDProof } from '@masknet/web3-providers'
-import { useCallback, useEffect } from 'react'
-import { useAsyncFn } from 'react-use'
-import type { AsyncStateRetry } from 'react-use/lib/useAsyncRetry.js'
+import { EMPTY_LIST, type BindingProof, MaskMessages, Sniffings } from '@masknet/shared-base'
+import type { UseQueryResult } from '@tanstack/react-query'
 
-export function usePersonaProofs(
-    publicKey?: string,
-    message?: WebExtensionMessage<MaskEvents>,
-): AsyncStateRetry<BindingProof[]> {
-    const [state, queryBinding] = useAsyncFn(async (publicKey?: string) => {
-        try {
-            if (!publicKey) return EMPTY_LIST
-
-            const binding = await NextIDProof.queryExistedBindingByPersona(publicKey)
-            return binding?.proofs ?? EMPTY_LIST
-        } catch {
-            return EMPTY_LIST
-        }
-    }, [])
+export function usePersonaProofs(publicKey?: string): UseQueryResult<BindingProof[]> {
+    const result = useQuery({
+        queryKey: ['@@next-id', 'bindings-by-persona', publicKey],
+        queryFn: async () => {
+            if (Sniffings.is_popup_page) await NextIDProof.clearPersonaQueryCache(publicKey!)
+            const binding = await NextIDProof.queryExistedBindingByPersona(publicKey!)
+            return binding?.proofs
+        },
+        select(data) {
+            return Array.isArray(data) ? data : EMPTY_LIST
+        },
+    })
+    const { refetch } = result
 
     useEffect(() => {
-        queryBinding(publicKey)
+        return MaskMessages.events.ownProofChanged.on(async () => {
+            // Clearing the query cache when the proof relation changes
+            if (publicKey) {
+                await NextIDProof.clearPersonaQueryCache(publicKey)
+            }
+            refetch()
+        })
     }, [publicKey])
 
-    const retry = useCallback(() => {
-        queryBinding(publicKey)
-    }, [publicKey])
-
-    useEffect(() => message?.events.ownProofChanged.on(retry), [retry])
-
-    if (state.loading) {
-        return {
-            loading: true,
-            retry,
-        }
-    }
-
-    if (state.error) {
-        return {
-            loading: false,
-            error: state.error,
-            retry,
-        }
-    }
-
-    return {
-        value: state.value ?? EMPTY_LIST,
-        loading: state.loading,
-        retry,
-    }
+    return result
 }

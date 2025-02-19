@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { useUpdateEffect } from 'react-use'
 import { Controller, FormProvider, useForm } from 'react-hook-form'
 import type { z as zod } from 'zod'
-import { makeStyles, MaskAlert, MaskTextField } from '@masknet/theme'
+import { BigNumber } from 'bignumber.js'
 import { Grid, Typography } from '@mui/material'
+import { makeStyles, MaskAlert, MaskTextField } from '@masknet/theme'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { Icons } from '@masknet/icons'
-import { useSharedI18N } from '@masknet/shared'
-import { NetworkPluginID } from '@masknet/shared-base'
+import { NUMERIC_INPUT_REGEXP_PATTERN } from '@masknet/shared-base'
 import {
     type ChainId,
     formatGweiToWei,
@@ -15,9 +16,9 @@ import {
     type Transaction,
 } from '@masknet/web3-shared-evm'
 import { formatCurrency, GasOptionType, isPositive, isZero } from '@masknet/web3-shared-base'
-import { useWeb3State } from '@masknet/web3-hooks-base'
-import { zodResolver } from '@hookform/resolvers/zod'
+import { EVMUtils } from '@masknet/web3-providers'
 import { useGasSchema } from './hooks/index.js'
+import { Trans } from '@lingui/react/macro'
 
 function getDefaultValues(transaction: Transaction, gasOptions: Record<GasOptionType, GasOption>) {
     return {
@@ -34,17 +35,6 @@ const useStyles = makeStyles()((theme) => {
     return {
         unit: {
             color: theme.palette.maskColor.third,
-        },
-        textfield: {
-            '& input[type=number]': {
-                MozAppearance: 'textfield',
-            },
-            '& input[type=number]::-webkit-outer-spin-button': {
-                WebkitAppearance: 'none',
-            },
-            '& input[type=number]::-webkit-inner-spin-button': {
-                WebkitAppearance: 'none',
-            },
         },
         caption: {
             color: theme.palette.maskColor.second,
@@ -69,7 +59,7 @@ const useStyles = makeStyles()((theme) => {
     }
 })
 
-export interface GasFormProps {
+interface GasFormProps {
     defaultGasLimit: string
     chainId: ChainId
     transaction: Transaction
@@ -92,11 +82,9 @@ export function GasForm(props: GasFormProps) {
         maxPriorityFeePerGasByUser,
         setMaxPriorityFeePerGasByUser,
     } = props
-    const t = useSharedI18N()
     const { classes } = useStyles()
-    const { Others } = useWeb3State(NetworkPluginID.PLUGIN_EVM)
 
-    const isEIP1559 = Others?.chainResolver.isSupport(chainId, 'EIP1559')
+    const isEIP1559 = EVMUtils.chainResolver.isFeatureSupported(chainId, 'EIP1559')
     const baseFeePerGas = gasOptions[GasOptionType.FAST].baseFeePerGas ?? '0'
 
     const schema = useGasSchema(chainId, transaction, gasOptions)
@@ -119,11 +107,12 @@ export function GasForm(props: GasFormProps) {
         'maxFeePerGas',
         'maxPriorityFeePerGas',
     ])
+
     const [gasPriceByUser, setGasPriceByUser] = useState<string>()
     const [maxFeePerGasByUser, setMaxFeePerGasByUser] = useState<string>()
 
     const errorCenter = useMemo(() => {
-        return isEIP1559 ? errors.gasLimit?.message ?? '' : ''
+        return isEIP1559 ? (errors.gasLimit?.message ?? '') : ''
     }, [isEIP1559, errors.gasLimit?.message])
     const errorBottom = useMemo(() => {
         return (
@@ -161,21 +150,22 @@ export function GasForm(props: GasFormProps) {
     // #endregion
 
     useEffect(() => {
-        const payload = isEIP1559
-            ? {
-                  gas: gasLimit,
-                  maxFeePerGas: formatGweiToWei(maxFeePerGas).toString(),
-                  maxPriorityFeePerGas: formatGweiToWei(maxPriorityFeePerGas).toString(),
-              }
-            : {
-                  gasPrice: formatGweiToWei(gasPrice).toString(),
-              }
+        const payload =
+            isEIP1559 ?
+                {
+                    gas: gasLimit,
+                    maxFeePerGas: formatGweiToWei(maxFeePerGas).toString(),
+                    maxPriorityFeePerGas: formatGweiToWei(maxPriorityFeePerGas).toString(),
+                }
+            :   {
+                    gasPrice: formatGweiToWei(gasPrice).toString(),
+                }
         onChange?.(!errorCenter && !errorBottom ? payload : undefined)
     }, [errorCenter, errorBottom, isEIP1559, gasLimit, gasPrice, maxFeePerGas, maxPriorityFeePerGas, gasOptions])
 
     return (
         <FormProvider {...methods}>
-            {isEIP1559 && isPositive(baseFeePerGas) ? (
+            {isEIP1559 && isPositive(baseFeePerGas) ?
                 <MaskAlert
                     classes={{
                         icon: classes.alertIcon,
@@ -183,11 +173,9 @@ export function GasForm(props: GasFormProps) {
                         standardSuccess: classes.alertStandardSuccess,
                     }}
                     icon={<Icons.Info />}>
-                    {t.gas_settings_info_gas_fee({
-                        fee: formatCurrency(formatWeiToGwei(baseFeePerGas), ''),
-                    })}
+                    <Trans>Current base fee is {formatCurrency(formatWeiToGwei(baseFeePerGas), '')} Gwei</Trans>
                 </MaskAlert>
-            ) : null}
+            :   null}
             <Grid container direction="row" spacing={2}>
                 {isEIP1559 ? null : (
                     <Grid item xs={6}>
@@ -195,18 +183,21 @@ export function GasForm(props: GasFormProps) {
                             render={({ field }) => (
                                 <MaskTextField
                                     {...field}
-                                    className={classes.textfield}
                                     InputProps={{
+                                        inputProps: {
+                                            pattern: NUMERIC_INPUT_REGEXP_PATTERN,
+                                        },
                                         type: 'number',
-                                        endAdornment: <Typography className={classes.unit}>Gwei</Typography>,
-                                    }}
-                                    inputProps={{
-                                        pattern: '^[0-9]*[.,]?[0-9]*$',
+                                        endAdornment: (
+                                            <Typography className={classes.unit}>
+                                                <Trans>Gwei</Trans>
+                                            </Typography>
+                                        ),
                                     }}
                                     value={isZero(gasPriceByUser ?? 0) ? gasPrice : gasPriceByUser}
                                     label={
                                         <Typography className={classes.caption}>
-                                            {t.gas_settings_label_gas_price()}
+                                            <Trans>Gas Price</Trans>
                                         </Typography>
                                     }
                                     error={!!errors.gasPrice?.message}
@@ -227,18 +218,17 @@ export function GasForm(props: GasFormProps) {
                         render={({ field }) => (
                             <MaskTextField
                                 {...field}
-                                className={classes.textfield}
                                 InputProps={{
+                                    inputProps: {
+                                        pattern: NUMERIC_INPUT_REGEXP_PATTERN,
+                                    },
                                     type: 'number',
                                 }}
                                 disabled={props.disableGasLimit}
-                                inputProps={{
-                                    pattern: '^[0-9]*[.,]?[0-9]*$',
-                                }}
-                                value={isZero(gasLimit) ? defaultGasLimit : gasLimit}
+                                value={isZero(gasLimit) ? defaultGasLimit : new BigNumber(gasLimit).toString()}
                                 label={
                                     <Typography className={classes.caption}>
-                                        {t.gas_settings_label_gas_limit()}
+                                        <Trans>Gas Limit</Trans>
                                     </Typography>
                                 }
                                 fullWidth
@@ -247,36 +237,39 @@ export function GasForm(props: GasFormProps) {
                         )}
                         name="gasLimit"
                     />
-                    {errorCenter ? (
+                    {errorCenter ?
                         <MaskAlert icon={<Icons.CircleWarning />} severity="error">
                             {errorCenter}
                         </MaskAlert>
-                    ) : null}
+                    :   null}
                 </Grid>
             </Grid>
-            {isEIP1559 ? (
+            {isEIP1559 ?
                 <Grid container direction="row" spacing={2}>
                     <Grid item xs={6}>
                         <Controller
                             render={({ field }) => (
                                 <MaskTextField
                                     {...field}
-                                    className={classes.textfield}
                                     InputProps={{
+                                        inputProps: {
+                                            pattern: NUMERIC_INPUT_REGEXP_PATTERN,
+                                        },
                                         type: 'number',
-                                        endAdornment: <Typography className={classes.unit}>Gwei</Typography>,
-                                    }}
-                                    inputProps={{
-                                        pattern: '^[0-9]*[.,]?[0-9]*$',
+                                        endAdornment: (
+                                            <Typography className={classes.unit}>
+                                                <Trans>Gwei</Trans>
+                                            </Typography>
+                                        ),
                                     }}
                                     value={
-                                        isZero(maxPriorityFeePerGasByUser ?? 0)
-                                            ? maxPriorityFeePerGas
-                                            : maxPriorityFeePerGasByUser
+                                        isZero(maxPriorityFeePerGasByUser ?? 0) ? maxPriorityFeePerGas : (
+                                            maxPriorityFeePerGasByUser
+                                        )
                                     }
                                     label={
                                         <Typography className={classes.caption}>
-                                            {t.gas_settings_label_max_priority_fee()}
+                                            <Trans>Max Priority Fee</Trans>
                                         </Typography>
                                     }
                                     error={!!errors.maxPriorityFeePerGas?.message}
@@ -296,18 +289,21 @@ export function GasForm(props: GasFormProps) {
                             render={({ field }) => (
                                 <MaskTextField
                                     {...field}
-                                    className={classes.textfield}
                                     InputProps={{
+                                        inputProps: {
+                                            pattern: NUMERIC_INPUT_REGEXP_PATTERN,
+                                        },
                                         type: 'number',
-                                        endAdornment: <Typography className={classes.unit}>Gwei</Typography>,
-                                    }}
-                                    inputProps={{
-                                        pattern: '^[0-9]*[.,]?[0-9]*$',
+                                        endAdornment: (
+                                            <Typography className={classes.unit}>
+                                                <Trans>Gwei</Trans>
+                                            </Typography>
+                                        ),
                                     }}
                                     value={isZero(maxFeePerGasByUser ?? 0) ? maxFeePerGas : maxFeePerGasByUser}
                                     label={
                                         <Typography className={classes.caption}>
-                                            {t.gas_settings_label_max_fee()}
+                                            <Trans>Max Fee</Trans>
                                         </Typography>
                                     }
                                     error={!!errors.maxFeePerGas?.message}
@@ -323,12 +319,12 @@ export function GasForm(props: GasFormProps) {
                         />
                     </Grid>
                 </Grid>
-            ) : null}
-            {errorBottom ? (
+            :   null}
+            {errorBottom ?
                 <MaskAlert icon={<Icons.CircleWarning />} severity="error">
                     {errorBottom}
                 </MaskAlert>
-            ) : null}
+            :   null}
         </FormProvider>
     )
 }

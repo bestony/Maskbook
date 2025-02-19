@@ -1,7 +1,18 @@
 import type { Subscription } from 'use-subscription'
 import type { Emitter } from '@servie/events'
-import type { ECKeyIdentifier, Account, Wallet } from '@masknet/shared-base'
-import type { Plugin } from '@masknet/plugin-infra/content-script'
+import type {
+    ECKeyIdentifier,
+    Account,
+    Wallet,
+    SignType,
+    PopupRoutes,
+    PopupRoutesParamsMap,
+    PersonaInformation,
+    ImportSource,
+} from '@masknet/shared-base'
+import type { JsonRpcPayload, JsonRpcResponse } from 'web3-core-helpers'
+import type { ChainId, TransactionOptions } from '@masknet/web3-shared-evm'
+import type { api } from '@dimensiondev/mask-wallet-core/proto'
 
 export namespace WalletAPI {
     export interface ProviderEvents<ChainId, ProviderType> {
@@ -20,7 +31,67 @@ export namespace WalletAPI {
         account?: string
     }
 
-    export interface Provider<ChainId, ProviderType, Web3Provider, Web3> {
+    export interface WalletConnectIOContext {
+        /** Open walletconnect dialog */
+        openWalletConnectDialog(uri: string): Promise<void>
+        /** Close walletconnect dialog */
+        closeWalletConnectDialog(): void
+    }
+    export interface MaskWalletIOContext {
+        /** Get all wallets */
+        wallets: Subscription<Wallet[]>
+        allPersonas: Subscription<readonly PersonaInformation[]>
+        resetAllWallets(): Promise<void>
+        /** Remove a old wallet */
+        removeWallet(id: string, password?: string): Promise<void>
+        renameWallet(address: string, name: string): Promise<void>
+        /** Add a new wallet */
+        addWallet(
+            source: ImportSource,
+            id: string,
+            updates?: {
+                name?: string
+                derivationPath?: string
+                storedKeyInfo?: api.IStoredKeyInfo
+            },
+        ): Promise<string>
+
+        /** Select a Mask Wallet account */
+        selectMaskWalletAccount(
+            chainId: ChainId,
+            defaultAccount?: string,
+            source?: string,
+        ): Promise<Array<{ address: string; owner?: string; identifier?: ECKeyIdentifier }>>
+
+        /** Disconnect origin from Mask wallet  */
+        disconnectAllWalletsFromOrigin(origin: string, type: 'any' | 'sdk' | 'internal'): Promise<void>
+    }
+    export type SignWithPersona = (
+        type: SignType,
+        message: unknown,
+        identifier?: ECKeyIdentifier,
+        silent?: boolean,
+    ) => Promise<string>
+    export interface MessageIOContext {
+        /** Send request to native API, for a risky request will be added into the waiting queue. */
+        send(payload: JsonRpcPayload, options: TransactionOptions): Promise<JsonRpcResponse>
+        /** Open popup window */
+        openPopupWindow<T extends PopupRoutes>(
+            route: T,
+            params: T extends keyof PopupRoutesParamsMap ? PopupRoutesParamsMap[T] : undefined,
+        ): Promise<void>
+        hasPaymentPassword(): Promise<boolean>
+    }
+    export interface IOContext {
+        MaskWalletContext: MaskWalletIOContext
+        MessageContext: MessageIOContext
+        WalletConnectContext: WalletConnectIOContext
+        /** Sign a message with persona (w or w/o popups) */
+        signWithPersona: SignWithPersona
+    }
+    export interface Provider<ChainId, ProviderType> {
+        readonly ready: boolean
+        readonly readyPromise?: Promise<void> | undefined
         readonly emitter: Emitter<ProviderEvents<ChainId, ProviderType>>
 
         readonly subscription: {
@@ -29,36 +100,12 @@ export namespace WalletAPI {
             wallets: Subscription<Wallet[]>
         }
 
-        /** Get to know whether the provider is ready. */
-        readonly ready: boolean
-        /** Keep waiting until the provider is ready. */
-        readonly readyPromise: Promise<void>
         /** connection status */
         readonly connected: boolean
-        /** async setup tasks */
-        setup(context?: Plugin.Shared.SharedUIContext): Promise<void>
-        /** Add a new wallet. */
-        addWallet(wallet: Wallet): Promise<void>
-        /** Update a wallet. */
-        updateWallet(address: string, wallet: Wallet): Promise<void>
-        /** Add or update a new wallet on demand. */
-        updateOrAddWallet(wallet: Wallet): Promise<void>
-        /** Rename a wallet */
-        renameWallet(address: string, name: string): Promise<void>
-        /** Remove a wallet */
-        removeWallet(address: string, password?: string | undefined): Promise<void>
-        /** Update a bunch of wallets. */
-        updateWallets(wallets: Wallet[]): Promise<void>
-        /** Remove a bunch of wallets. */
-        removeWallets(wallets: Wallet[]): Promise<void>
-        /** Switch to the designate account. */
-        switchAccount(account?: string): Promise<void>
+        /** Post-constructor code */
+        setup?(): void
         /** Switch to the designate chain. */
-        switchChain(chainId?: ChainId): Promise<void>
-        /** Create an instance from the network SDK. */
-        createWeb3(options?: ProviderOptions<ChainId>): Web3
-        /** Create an instance that implement the wallet protocol. */
-        createWeb3Provider(options?: ProviderOptions<ChainId>): Web3Provider
+        switchChain(chainId: ChainId): Promise<void>
         /** Create the connection. */
         connect(
             chainId?: ChainId,

@@ -1,5 +1,4 @@
-import { getEnumAsArray } from '@masknet/kit'
-import { NetworkPluginID, EnhanceableSite, ExtensionSite } from '@masknet/shared-base'
+import { EnhanceableSiteList, NetworkPluginID } from '@masknet/shared-base'
 import {
     type ChainDescriptor,
     createFungibleToken,
@@ -7,12 +6,13 @@ import {
     type ProviderDescriptor,
 } from '@masknet/web3-shared-base'
 import { ChainId, NetworkType, ProviderType, SchemaType } from '../types.js'
-import { getTokenConstant } from './constants.js'
+import { ChainIdList, getTokenConstant } from './constants.js'
 
 const PLUGIN_ID = NetworkPluginID.PLUGIN_SOLANA
 
-export const CHAIN_DESCRIPTORS: Array<ChainDescriptor<ChainId, SchemaType, NetworkType>> = [
+export const CHAIN_DESCRIPTORS: ReadonlyArray<ChainDescriptor<ChainId, SchemaType, NetworkType>> = [
     {
+        ID: `${ChainId.Mainnet}_Solana`,
         type: NetworkType.Solana,
         chainId: ChainId.Mainnet,
         coinMarketCapChainId: '',
@@ -22,7 +22,7 @@ export const CHAIN_DESCRIPTORS: Array<ChainDescriptor<ChainId, SchemaType, Netwo
         color: '#17ac7c',
         fullName: 'Solana',
         shortName: 'Solana',
-        network: 'mainnet',
+        network: 'mainnet-beta',
         nativeCurrency: createFungibleToken(
             ChainId.Mainnet,
             SchemaType.Fungible,
@@ -32,11 +32,15 @@ export const CHAIN_DESCRIPTORS: Array<ChainDescriptor<ChainId, SchemaType, Netwo
             9,
             'https://assets.coingecko.com/coins/images/4128/small/solana.png',
         ),
-        explorerURL: {
+        explorerUrl: {
             url: 'https://explorer.solana.com/',
         },
+        rpcUrl: '',
+        iconUrl: new URL('../assets/solana.png', import.meta.url).href,
+        isCustomized: false,
     },
     {
+        ID: `${ChainId.Devnet}_Solana`,
         type: NetworkType.Solana,
         chainId: ChainId.Devnet,
         coinMarketCapChainId: '',
@@ -56,14 +60,18 @@ export const CHAIN_DESCRIPTORS: Array<ChainDescriptor<ChainId, SchemaType, Netwo
             9,
             'https://assets.coingecko.com/coins/images/4128/small/solana.png',
         ),
-        explorerURL: {
+        explorerUrl: {
             url: 'https://explorer.solana.com/',
             parameters: {
                 cluster: 'devnet',
             },
         },
+        rpcUrl: '',
+        iconUrl: new URL('../assets/solana.png', import.meta.url).href,
+        isCustomized: false,
     },
     {
+        ID: `${ChainId.Testnet}_Solana`,
         type: NetworkType.Solana,
         chainId: ChainId.Testnet,
         coinMarketCapChainId: '',
@@ -83,24 +91,28 @@ export const CHAIN_DESCRIPTORS: Array<ChainDescriptor<ChainId, SchemaType, Netwo
             9,
             'https://assets.coingecko.com/coins/images/4128/small/solana.png',
         ),
-        explorerURL: {
+        explorerUrl: {
             url: 'https://explorer.solana.com/',
             parameters: {
                 cluster: 'testnet',
             },
         },
+        rpcUrl: '',
+        iconUrl: new URL('../assets/solana.png', import.meta.url).href,
+        isCustomized: false,
     },
 ]
 
-export const NETWORK_DESCRIPTORS: Array<NetworkDescriptor<ChainId, NetworkType>> = [
+export const NETWORK_DESCRIPTORS: ReadonlyArray<NetworkDescriptor<ChainId, NetworkType>> = [
     {
         ID: `${PLUGIN_ID}_solana`,
         networkSupporterPluginID: PLUGIN_ID,
         chainId: ChainId.Mainnet,
         type: NetworkType.Solana,
         name: 'Solana',
-        icon: new URL('../assets/solana.png', import.meta.url),
+        icon: new URL('../assets/solana.png', import.meta.url).href,
         iconColor: '#5d6fc0',
+        backgroundGradient: 'linear-gradient(180deg, rgba(25, 251, 155, 0.15) 0%, rgba(25, 251, 155, 0.05) 100%)',
         averageBlockDelay: 15,
         isMainnet: true,
     },
@@ -110,25 +122,38 @@ export const NETWORK_DESCRIPTORS: Array<NetworkDescriptor<ChainId, NetworkType>>
         chainId: ChainId.Testnet,
         type: NetworkType.Solana,
         name: 'Solana Testnet',
-        icon: new URL('../assets/solana.png', import.meta.url),
+        icon: new URL('../assets/solana.png', import.meta.url).href,
+        backgroundGradient: 'linear-gradient(180deg, rgba(25, 251, 155, 0.15) 0%, rgba(25, 251, 155, 0.05) 100%)',
         iconColor: '#5d6fc0',
         averageBlockDelay: 15,
         isMainnet: false,
     },
+    {
+        ID: `${PLUGIN_ID}_solana`,
+        networkSupporterPluginID: PLUGIN_ID,
+        chainId: ChainId.Devnet,
+        type: NetworkType.Solana,
+        name: 'Solana',
+        icon: new URL('../assets/solana.png', import.meta.url).href,
+        iconColor: '#5d6fc0',
+        backgroundGradient: 'linear-gradient(180deg, rgba(25, 251, 155, 0.15) 0%, rgba(25, 251, 155, 0.05) 100%)',
+        averageBlockDelay: 15,
+        isMainnet: true,
+    },
 ]
-export const PROVIDER_DESCRIPTORS: Array<ProviderDescriptor<ChainId, ProviderType>> = [
+export const PROVIDER_DESCRIPTORS: ReadonlyArray<ProviderDescriptor<ChainId, ProviderType>> = [
     {
         ID: `${PLUGIN_ID}_phantom`,
         providerAdaptorPluginID: PLUGIN_ID,
         type: ProviderType.Phantom,
         name: 'Phantom',
-        icon: new URL('../assets/phantom.png', import.meta.url),
+        icon: new URL('../assets/phantom.png', import.meta.url).href,
         homeLink: 'https://phantom.app/',
         shortenLink: 'phantom.app',
         downloadLink: 'https://phantom.app/download',
         enableRequirements: {
-            supportedChainIds: getEnumAsArray(ChainId).map((x) => x.value),
-            supportedEnhanceableSites: getEnumAsArray(EnhanceableSite).map((x) => x.value),
+            supportedChainIds: ChainIdList,
+            supportedEnhanceableSites: EnhanceableSiteList,
             supportedExtensionSites: [],
         },
         iconFilterColor: 'rgba(85, 27, 249, 0.2)',
@@ -140,13 +165,13 @@ export const PROVIDER_DESCRIPTORS: Array<ProviderDescriptor<ChainId, ProviderTyp
         providerAdaptorPluginID: PLUGIN_ID,
         type: ProviderType.Solflare,
         name: 'Solflare',
-        icon: new URL('../assets/solflare.png', import.meta.url),
+        icon: new URL('../assets/solflare.png', import.meta.url).href,
         homeLink: 'https://solflare.com/',
         shortenLink: 'solflare.com',
         downloadLink: 'https://solflare.com/download',
         enableRequirements: {
-            supportedChainIds: getEnumAsArray(ChainId).map((x) => x.value),
-            supportedEnhanceableSites: [],
+            supportedChainIds: ChainIdList,
+            supportedEnhanceableSites: EnhanceableSiteList,
             supportedExtensionSites: [],
         },
     },
@@ -155,29 +180,32 @@ export const PROVIDER_DESCRIPTORS: Array<ProviderDescriptor<ChainId, ProviderTyp
         providerAdaptorPluginID: PLUGIN_ID,
         type: ProviderType.Coin98,
         name: 'Coin98',
-        icon: new URL('../assets/coin98.png', import.meta.url),
+        icon: new URL('../assets/coin98.png', import.meta.url).href,
         homeLink: 'https://coin98.com/',
         shortenLink: 'solflare.com',
         downloadLink: 'https://coin98.com/wallet',
         enableRequirements: {
-            supportedChainIds: getEnumAsArray(ChainId).map((x) => x.value),
+            supportedChainIds: ChainIdList,
             supportedEnhanceableSites: [],
             supportedExtensionSites: [],
         },
     },
     {
-        ID: `${PLUGIN_ID}_sollet`,
+        ID: `${PLUGIN_ID}_okx`,
         providerAdaptorPluginID: PLUGIN_ID,
-        type: ProviderType.Sollet,
-        name: 'Sollet',
-        icon: new URL('../assets/sollet.png', import.meta.url),
-        homeLink: 'https://www.sollet.io/',
-        shortenLink: 'sollet.io',
-        downloadLink: 'https://www.sollet.io/',
+        type: ProviderType.OKX,
+        name: 'OKX Solana Wallet',
+        icon: new URL('../assets/okx.svg', import.meta.url).href,
         enableRequirements: {
-            supportedChainIds: getEnumAsArray(ChainId).map((x) => x.value),
-            supportedEnhanceableSites: [],
-            supportedExtensionSites: getEnumAsArray(ExtensionSite).map((x) => x.value),
+            supportedChainIds: ChainIdList,
+            supportedEnhanceableSites: EnhanceableSiteList,
+            supportedExtensionSites: [],
         },
+        homeLink: 'https://www.okx.com/web3',
+        shortenLink: 'okx.com',
+        downloadLink: 'https://www.okx.com/web3',
+        iconFilterColor: 'rgba(0, 0, 0, 0.20)',
+        backgroundGradient:
+            'linear-gradient(90deg, rgba(98, 152, 234, 0.2) 1.03%, rgba(98, 152, 234, 0.2) 1.04%, rgba(98, 126, 234, 0.2) 100%), linear-gradient(0deg, #FFFFFF, #FFFFFF)',
     },
 ]

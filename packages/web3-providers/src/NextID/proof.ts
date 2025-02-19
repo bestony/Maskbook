@@ -1,29 +1,25 @@
+import { env } from '@masknet/flags'
 import {
+    type BindingProof,
+    NextIDAction,
+    type NextIDBindings,
+    type NextIDErrorBody,
+    type NextIDPayload,
+    type NextIDPersonaBindings,
     NextIDPlatform,
     fromHex,
     toBase64,
-    type BindingProof,
-    type NextIDAction,
-    type NextIDBindings,
-    type NextIDErrorBody,
-    type NextIDIdentity,
-    type NextIDPayload,
-    type NextIDPersonaBindings,
 } from '@masknet/shared-base'
-import { first, uniqWith } from 'lodash-es'
+import { first, sortBy } from 'lodash-es'
 import urlcat from 'urlcat'
-import { fetchJSON } from '../entry-helpers.js'
-import type { NextIDBaseAPI } from '../entry-types.js'
-import {
-    PROOF_BASE_URL_DEV,
-    PROOF_BASE_URL_PROD,
-    RELATION_SERVICE_URL,
-    TWITTER_HANDLER_VERIFY_URL,
-} from './constants.js'
+import { Expiration, stableSquashedCached } from '../entry-helpers.js'
+import { fetchJSON } from '../helpers/fetchJSON.js'
+import { PROOF_BASE_URL_DEV, PROOF_BASE_URL_PROD } from './constants.js'
 import { staleNextIDCached } from './helpers.js'
 
 const BASE_URL =
-    process.env.channel === 'stable' && process.env.NODE_ENV === 'production' ? PROOF_BASE_URL_PROD : PROOF_BASE_URL_DEV
+    env.channel === 'stable' && process.env.NODE_ENV === 'production' ? PROOF_BASE_URL_PROD : PROOF_BASE_URL_DEV
+
 interface CreatePayloadBody {
     action: string
     platform: string
@@ -42,30 +38,40 @@ interface CreatePayloadResponse {
     created_at: string
 }
 
-/**
- * Lens account queried from next id
- */
-export interface LensAccount {
-    lens: string
-    displayName: string
-    address: string
+interface RestorePubkeyResponse {
+    /** hex public key */
+    public_key: string
 }
 
-const getPersonaQueryURL = (platform: string, identity: string) =>
-    urlcat(BASE_URL, '/v1/proof', {
+function getPersonaQueryURL(platform: string, identity: string) {
+    return urlcat(BASE_URL, '/v1/proof', {
         platform,
         identity,
     })
+}
 
-const getExistedBindingQueryURL = (platform: string, identity: string, personaPublicKey: string) =>
-    urlcat(BASE_URL, '/v1/proof/exists', {
+function getExistedBindingQueryURL(platform: string, identity: string, personaPublicKey: string) {
+    return urlcat(BASE_URL, '/v1/proof/exists', {
         platform,
         identity,
         public_key: personaPublicKey,
     })
+}
 
-export class NextIDProofAPI implements NextIDBaseAPI.Proof {
-    async bindProof(
+function fetchFromProofService<T>(request: Request | RequestInfo, init?: RequestInit) {
+    return fetchJSON<T>(request, init, {
+        squashExpiration: Expiration.TEN_SECONDS,
+    })
+}
+
+export class NextIDProof {
+    static async clearPersonaQueryCache(personaPublicKey: string) {
+        const url = getPersonaQueryURL(NextIDPlatform.NextID, personaPublicKey)
+        await staleNextIDCached(url)
+        await stableSquashedCached(url)
+    }
+
+    static async bindProof(
         uuid: string,
         personaPublicKey: string,
         action: NextIDAction,
@@ -107,51 +113,55 @@ export class NextIDProofAPI implements NextIDBaseAPI.Proof {
         await staleNextIDCached(cacheKeyOfExistedBinding)
         await staleNextIDCached(cacheKeyOfQueryPersona)
         await staleNextIDCached(cacheKeyOfQueryPlatform)
+
+        await stableSquashedCached(cacheKeyOfQueryPersona)
+        await stableSquashedCached(cacheKeyOfQueryPlatform)
+        await stableSquashedCached(cacheKeyOfExistedBinding)
     }
 
-    async queryExistedBindingByPersona(personaPublicKey: string) {
-        const url = getPersonaQueryURL(NextIDPlatform.NextID, personaPublicKey)
-        const { ids } = await fetchJSON<NextIDBindings>(url)
+    static async queryExistedBindingByPersona(personaPublicKey: string) {
+        const { ids } = await fetchFromProofService<NextIDBindings>(
+            getPersonaQueryURL(NextIDPlatform.NextID, personaPublicKey),
+        )
         // Will have only one item when query by personaPublicKey
         return first(ids)
     }
 
-    async queryExistedBindingByPlatform(platform: NextIDPlatform, identity: string, page = 1) {
+    static async queryExistedBindingByPlatform(platform: NextIDPlatform, identity: string, page = 1, exact = true) {
         if (!platform && !identity) return []
 
-        const response = await fetchJSON<NextIDBindings>(
+        const bindings = await fetchFromProofService<NextIDBindings>(
             urlcat(BASE_URL, '/v1/proof', {
                 platform,
                 identity,
                 page,
-                exact: true,
-                sort: 'activated_at',
-                order: 'desc',
+                exact,
+                // TODO workaround for the API, and will sort the result manually
             }),
         )
 
-        return response.ids
+        return sortBy(bindings.ids, (x) => -x.activated_at)
     }
 
-    async queryLatestBindingByPlatform(
+    static async queryLatestBindingByPlatform(
         platform: NextIDPlatform,
         identity: string,
         publicKey?: string,
     ): Promise<NextIDPersonaBindings | null> {
         if (!platform && !identity) return null
 
-        const result = await this.queryExistedBindingByPlatform(platform, identity, 1)
-        if (publicKey) return result.find((x) => x.persona === publicKey) ?? null
-        return first(result) ?? null
+        const bindings = await this.queryAllExistedBindingsByPlatform(platform, identity, true)
+        if (publicKey) return bindings.find((x) => x.persona === publicKey) ?? null
+        return first(bindings) ?? null
     }
 
-    async queryAllExistedBindingsByPlatform(platform: NextIDPlatform, identity: string, exact?: boolean) {
+    static async queryAllExistedBindingsByPlatform(platform: NextIDPlatform, identity: string, exact?: boolean) {
         if (!platform && !identity) return []
 
         const nextIDPersonaBindings: NextIDPersonaBindings[] = []
         let page = 1
         do {
-            const result = await fetchJSON<NextIDBindings>(
+            const bindings = await fetchFromProofService<NextIDBindings>(
                 urlcat(BASE_URL, '/v1/proof', {
                     platform,
                     identity,
@@ -160,205 +170,37 @@ export class NextIDProofAPI implements NextIDBaseAPI.Proof {
                     order: 'desc',
                 }),
             )
-
-            const personaBindings = result.ids
+            const personaBindings = bindings.ids
             if (personaBindings.length === 0) return nextIDPersonaBindings
             nextIDPersonaBindings.push(...personaBindings)
 
             // next is `0` if current page is the last one.
-            if (result.pagination.next === 0) return nextIDPersonaBindings
+            if (bindings.pagination.next === 0) return nextIDPersonaBindings
 
             page += 1
         } while (page > 1)
         return []
     }
 
-    async queryIsBound(personaPublicKey: string, platform: NextIDPlatform, identity: string) {
+    static async queryIsBound(personaPublicKey: string, platform: NextIDPlatform, identity: string) {
         try {
             if (!platform && !identity) return false
 
-            const url = getExistedBindingQueryURL(platform, identity, personaPublicKey)
-            const result = await fetchJSON<BindingProof | undefined>(url)
-            return !!result?.is_valid
+            const proof = await fetchFromProofService<BindingProof | undefined>(
+                getExistedBindingQueryURL(platform, identity, personaPublicKey),
+            )
+            return !!proof?.is_valid
         } catch {
             return false
         }
     }
 
-    async queryProfilesByRelationService(address: string) {
-        const response = await fetchJSON<{
-            data: {
-                identity: {
-                    neighborWithTraversal: Array<{
-                        source: NextIDPlatform
-                        to: NextIDIdentity
-                        from: NextIDIdentity
-                    }>
-                }
-            }
-        }>(RELATION_SERVICE_URL, {
-            method: 'POST',
-            mode: 'cors',
-            body: JSON.stringify({
-                operationName: 'GET_PROFILES_QUERY',
-                variables: { platform: 'ethereum', identity: address.toLowerCase() },
-                query: `
-                    query GET_PROFILES_QUERY($platform: String, $identity: String) {
-                        identity(platform: $platform, identity: $identity) {
-                            neighborWithTraversal(depth: 5) {
-                                source
-                                to {
-                                    platform
-                                    identity
-                                    displayName
-                                }
-                                from {
-                                    platform
-                                    identity
-                                    displayName
-                                }
-                            }
-                        }
-                    }
-                `,
-            }),
-        })
-
-        const rawData = response.data.identity.neighborWithTraversal
-            .map((x) => createBindingProofFromProfileQuery(x.to.platform, x.source, x.to.identity, x.to.displayName))
-            .concat(
-                response.data.identity.neighborWithTraversal.map((x) =>
-                    createBindingProofFromProfileQuery(x.from.platform, x.source, x.from.identity, x.to.displayName),
-                ),
-            )
-
-        return uniqWith(rawData, (a, b) => a.identity === b.identity && a.platform === b.platform).filter(
-            (x) => ![NextIDPlatform.Ethereum, NextIDPlatform.NextID].includes(x.platform) && x.identity,
-        )
-    }
-
-    async queryProfilesByTwitterId(twitterId: string) {
-        const response = await fetchJSON<{
-            data: {
-                identity: {
-                    neighborWithTraversal: Array<{
-                        source: NextIDPlatform
-                        to: NextIDIdentity
-                        from: NextIDIdentity
-                    }>
-                }
-            }
-        }>(RELATION_SERVICE_URL, {
-            method: 'POST',
-            mode: 'cors',
-            body: JSON.stringify({
-                operationName: 'GET_PROFILES_QUERY',
-                variables: { platform: 'twitter', identity: twitterId.toLowerCase() },
-                query: `
-                    query GET_PROFILES_QUERY($platform: String, $identity: String) {
-                        identity(platform: $platform, identity: $identity) {
-                            neighborWithTraversal(depth: 5) {
-                                source
-                                to {
-                                    platform
-                                    identity
-                                    displayName
-                                }
-                                from {
-                                    platform
-                                    identity
-                                    displayName
-                                }
-                            }
-                        }
-                    }
-                `,
-            }),
-        })
-
-        const rawData = response.data.identity.neighborWithTraversal
-            .map((x) => createBindingProofFromProfileQuery(x.to.platform, x.source, x.to.identity, x.to.displayName))
-            .concat(
-                response.data.identity.neighborWithTraversal.map((x) =>
-                    createBindingProofFromProfileQuery(x.from.platform, x.source, x.from.identity, x.to.displayName),
-                ),
-            )
-
-        return uniqWith(rawData, (a, b) => a.identity === b.identity && a.platform === b.platform).filter(
-            (x) => ![NextIDPlatform.Ethereum, NextIDPlatform.NextID].includes(x.platform) && x.identity,
-        )
-    }
-
-    async queryAllLens(twitterId: string): Promise<LensAccount[]> {
-        const response = await fetchJSON<{
-            data: {
-                identity: {
-                    uuid: string
-                    platform: 'twitter'
-                    identity: string
-                    displayName: string
-                    neighborWithTraversal: Array<{
-                        source: NextIDPlatform
-                        from: NextIDIdentity
-                        to: NextIDIdentity
-                    }>
-                }
-            }
-        }>(RELATION_SERVICE_URL, {
-            method: 'POST',
-            mode: 'cors',
-            body: JSON.stringify({
-                operationName: 'GET_PROFILES_QUERY',
-                variables: { platform: 'twitter', identity: twitterId.toLowerCase() },
-                query: `
-                    query GET_PROFILES_QUERY($platform: String, $identity: String) {
-                      identity(platform: $platform, identity: $identity) {
-                        uuid
-                        platform
-                        identity
-                        displayName
-                        neighborWithTraversal(depth: 5) {
-                          source
-                          from {
-                            uuid
-                            platform
-                            identity
-                            displayName
-                          }
-                          to {
-                            uuid
-                            platform
-                            identity
-                            displayName
-                          }
-                        }
-                      }
-                    }
-                `,
-            }),
-        })
-
-        const connections = response.data.identity.neighborWithTraversal.filter((x) => {
-            return (
-                x.source === NextIDPlatform.LENS &&
-                x.from.platform === NextIDPlatform.Ethereum &&
-                x.to.platform === NextIDPlatform.LENS
-            )
-        })
-
-        return connections.map((x) => ({
-            lens: x.to.identity,
-            displayName: x.to.displayName,
-            address: x.from.identity,
-        }))
-    }
-
-    async createPersonaPayload(
+    static async createPersonaPayload(
         personaPublicKey: string,
         action: NextIDAction,
         identity: string,
         platform: NextIDPlatform,
-        language?: string,
+        language: string = 'default',
     ): Promise<NextIDPayload | null> {
         const requestBody: CreatePayloadBody = {
             action,
@@ -367,56 +209,34 @@ export class NextIDProofAPI implements NextIDBaseAPI.Proof {
             public_key: personaPublicKey,
         }
 
-        const nextIDLanguageFormat = language?.replace('-', '_') as PostContentLanguages
+        const nextIDLanguageFormat = language.replace('-', '_') as PostContentLanguages
 
         const response = await fetchJSON<CreatePayloadResponse>(urlcat(BASE_URL, '/v1/proof/payload'), {
             body: JSON.stringify(requestBody),
             method: 'POST',
         })
 
-        return response
-            ? {
-                  postContent:
-                      response.post_content[nextIDLanguageFormat ?? 'default'] ?? response.post_content.default,
-                  signPayload: JSON.stringify(JSON.parse(response.sign_payload)),
-                  createdAt: response.created_at,
-                  uuid: response.uuid,
-              }
-            : null
+        return response ?
+                {
+                    postContent: response.post_content[nextIDLanguageFormat] ?? response.post_content.default,
+                    signPayload: JSON.stringify(JSON.parse(response.sign_payload)),
+                    createdAt: response.created_at,
+                    uuid: response.uuid,
+                }
+            :   null
     }
 
-    async verifyTwitterHandlerByAddress(address: string, handler: string): Promise<boolean> {
-        const response = await fetchJSON<{
-            statusCode: number
-            data?: string[]
-            error?: string
-        }>(
-            urlcat(TWITTER_HANDLER_VERIFY_URL, '/v1/relation/handles', {
-                wallet: address.toLowerCase(),
-                isVerified: true,
+    static async restorePubkey(payload: string, platform: NextIDPlatform, identity: string) {
+        const url = urlcat(BASE_URL, '/v1/proof/restore_pubkey')
+        const response = await fetchJSON<RestorePubkeyResponse>(url, {
+            method: 'POST',
+            body: JSON.stringify({
+                action: NextIDAction.Create,
+                platform,
+                identity,
+                proof_post: payload,
             }),
-        )
-
-        if (response.error || !handler || !address) return false
-
-        return response.data?.includes(handler) || response.data?.length === 0
-    }
-}
-
-function createBindingProofFromProfileQuery(
-    platform: NextIDPlatform,
-    source: NextIDPlatform,
-    identity: string,
-    name: string,
-): BindingProof {
-    return {
-        platform,
-        source,
-        identity,
-        name,
-        created_at: '',
-        invalid_reason: '',
-        last_checked_at: '',
-        is_valid: true,
+        })
+        return response.public_key
     }
 }

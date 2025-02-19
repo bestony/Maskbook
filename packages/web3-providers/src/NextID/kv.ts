@@ -5,10 +5,10 @@ import urlcat from 'urlcat'
 import { compact } from 'lodash-es'
 import { Err, Ok, type Result } from 'ts-results-es'
 import type { NextIDPlatform, NextIDStoragePayload } from '@masknet/shared-base'
+import { env } from '@masknet/flags'
 import { KV_BASE_URL_DEV, KV_BASE_URL_PROD } from './constants.js'
 import { staleNextIDCached } from './helpers.js'
-import type { NextIDBaseAPI } from '../entry-types.js'
-import { fetchJSON } from '../entry-helpers.js'
+import { fetchCachedJSON, fetchJSON, fetchSquashedJSON } from '../helpers/fetchJSON.js'
 
 interface CreatePayloadResponse {
     uuid: string
@@ -16,8 +16,7 @@ interface CreatePayloadResponse {
     created_at: string
 }
 
-const BASE_URL =
-    process.env.channel === 'stable' && process.env.NODE_ENV === 'production' ? KV_BASE_URL_PROD : KV_BASE_URL_DEV
+const BASE_URL = env.channel === 'stable' && process.env.NODE_ENV === 'production' ? KV_BASE_URL_PROD : KV_BASE_URL_DEV
 
 function formatPatchData(pluginID: string, data: unknown) {
     return {
@@ -25,13 +24,13 @@ function formatPatchData(pluginID: string, data: unknown) {
     }
 }
 
-export class NextIDStorageAPI implements NextIDBaseAPI.Storage {
+export class NextIDStorageProvider {
     /**
      * Get current KV of a persona
      * @param personaPublicKey
      *
      */
-    async getByIdentity<T>(
+    static async getByIdentity<T>(
         personaPublicKey: string,
         platform: NextIDPlatform,
         identity: string,
@@ -46,7 +45,7 @@ export class NextIDStorageAPI implements NextIDBaseAPI.Storage {
             persona: string
             proofs: Proof[]
         }
-        const response = await fetchJSON<Response | undefined>(
+        const response = await fetchSquashedJSON<Response | undefined>(
             urlcat(BASE_URL, '/v1/kv', { persona: personaPublicKey }),
         )
         if (!response) return Err('User not found')
@@ -58,7 +57,7 @@ export class NextIDStorageAPI implements NextIDBaseAPI.Storage {
         return Ok(proofs[0].content[pluginID])
     }
 
-    async getAllByIdentity<T>(
+    static async getAllByIdentity<T>(
         platform: NextIDPlatform,
         identity: string,
         pluginID: string,
@@ -71,14 +70,14 @@ export class NextIDStorageAPI implements NextIDBaseAPI.Storage {
         interface Response {
             values: Proof[]
         }
-        const response = await fetchJSON<Response>(urlcat(BASE_URL, '/v1/kv/by_identity', { platform, identity }))
+        const response = await fetchCachedJSON<Response>(urlcat(BASE_URL, '/v1/kv/by_identity', { platform, identity }))
         if (!response) return Err('User not found')
 
         const result = compact(response.values.map((x) => x.content[pluginID]))
         return Ok(result)
     }
-    async get<T>(personaPublicKey: string): Promise<T> {
-        return fetchJSON<T>(urlcat(BASE_URL, '/v1/kv', { persona: personaPublicKey }))
+    static async get<T>(personaPublicKey: string): Promise<T> {
+        return fetchCachedJSON<T>(urlcat(BASE_URL, '/v1/kv', { persona: personaPublicKey }))
     }
     /**
      * Get signature payload for updating
@@ -90,7 +89,7 @@ export class NextIDStorageAPI implements NextIDBaseAPI.Storage {
      *
      * We choose [RFC 7396](https://www.rfc-editor.org/rfc/rfc7396) standard for KV modifying.
      */
-    async getPayload(
+    static async getPayload(
         personaPublicKey: string,
         platform: NextIDPlatform,
         identity: string,
@@ -109,13 +108,13 @@ export class NextIDStorageAPI implements NextIDBaseAPI.Storage {
             method: 'POST',
         })
 
-        return response
-            ? Ok({
-                  signPayload: JSON.stringify(JSON.parse(response.sign_payload)),
-                  createdAt: response.created_at,
-                  uuid: response.uuid,
-              })
-            : Err(null)
+        return response ?
+                Ok({
+                    signPayload: JSON.stringify(JSON.parse(response.sign_payload)),
+                    createdAt: response.created_at,
+                    uuid: response.uuid,
+                })
+            :   Err(null)
     }
 
     /**
@@ -131,7 +130,7 @@ export class NextIDStorageAPI implements NextIDBaseAPI.Storage {
      *
      * We choose [RFC 7396](https://www.rfc-editor.org/rfc/rfc7396) standard for KV modifying.
      */
-    async set<T>(
+    static async set<T>(
         uuid: string,
         personaPublicKey: string,
         signature: string,

@@ -16,7 +16,7 @@ export function TypedMessageRender(props: RenderProps) {
     if (isEmpty) return null
 
     return (
-        <span ref={textResize}>
+        <span ref={textResize} onClick={(e) => e.stopPropagation()}>
             <Container>
                 <TypedMessageRenderInline {...props} />
             </Container>
@@ -35,7 +35,11 @@ export function TypedMessageRenderInline(props: RenderProps) {
     const Render = Registry(message.type)?.component || TypedMessageUnknownRender
     if (isDebug) {
         return (
-            <span data-kind={message.type} ref={(ref) => ref && Object.assign(ref, { message })}>
+            <span
+                data-kind={message.type}
+                ref={(ref) => {
+                    ref && Object.assign(ref, { message })
+                }}>
                 <Render {...message} />
             </span>
         )

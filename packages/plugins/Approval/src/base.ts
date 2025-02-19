@@ -1,8 +1,8 @@
 import type { Plugin } from '@masknet/plugin-infra'
-import { NetworkPluginID } from '@masknet/shared-base'
+import { DEFAULT_PLUGIN_PUBLISHER, EnhanceableSite, NetworkPluginID } from '@masknet/shared-base'
 import { ChainId } from '@masknet/web3-shared-evm'
 import { ApprovalPluginID } from './constants.js'
-import { languages } from './locales/languages.js'
+import { languages } from './locale/languages.js'
 
 export const base: Plugin.Shared.Definition = {
     ID: ApprovalPluginID,
@@ -10,11 +10,13 @@ export const base: Plugin.Shared.Definition = {
     description: {
         fallback: '',
     },
-    publisher: { name: { fallback: 'Mask Network' }, link: 'https://mask.io/' },
+    publisher: DEFAULT_PLUGIN_PUBLISHER,
     enableRequirement: {
-        networks: {
+        supports: {
             type: 'opt-out',
-            networks: {},
+            sites: {
+                [EnhanceableSite.Localhost]: true,
+            },
         },
         target: 'stable',
         web3: {
@@ -22,12 +24,15 @@ export const base: Plugin.Shared.Definition = {
                 supportedChainIds: [
                     ChainId.Mainnet,
                     ChainId.BSC,
-                    ChainId.Matic,
+                    ChainId.Base,
+                    ChainId.Polygon,
                     ChainId.Arbitrum,
                     ChainId.xDai,
                     ChainId.Fantom,
                     ChainId.Avalanche,
                     ChainId.Aurora,
+                    ChainId.Optimism,
+                    ChainId.Scroll,
                 ],
             },
             [NetworkPluginID.PLUGIN_FLOW]: { supportedChainIds: [] },

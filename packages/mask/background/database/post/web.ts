@@ -2,12 +2,11 @@ import {
     type AESCryptoKey,
     type AESJsonWebKey,
     ECKeyIdentifier,
-    type PersonaIdentifier,
     PostIdentifier,
     PostIVIdentifier,
     ProfileIdentifier,
 } from '@masknet/shared-base'
-import { openDB } from 'idb/with-async-ittr'
+import { openDB } from 'idb'
 import { CryptoKeyToJsonWebKey } from '../../../utils-pure/index.js'
 import { createDBAccessWithAsyncUpgrade, createTransaction } from '../utils/openDB.js'
 import type { PostRecord, PostDB, PostReadOnlyTransaction, PostReadWriteTransaction } from './type.js'
@@ -40,8 +39,8 @@ const db = createDBAccessWithAsyncUpgrade<PostDB, UpgradeKnowledge>(
                     await store.clear()
                     for (const each of old) {
                         const id = PostIdentifier.from(each.identifier)
-                        if (id.some) {
-                            const { postId, identifier } = id.val
+                        if (id.isSome()) {
+                            const { postId, identifier } = id.value
                             each.identifier = new PostIVIdentifier(identifier.network, postId).toText()
                             await store.add(each)
                         }
@@ -159,8 +158,7 @@ const db = createDBAccessWithAsyncUpgrade<PostDB, UpgradeKnowledge>(
     'maskbook-post-v2',
 )
 
-/** @internal */
-export const PostDBAccess = db
+const PostDBAccess = db
 
 /** @internal */
 export async function withPostDBTransaction(task: (t: PostReadWriteTransaction) => Promise<void>) {
@@ -224,11 +222,11 @@ export async function queryPostsDB(
     const selected: PostRecord[] = []
     for await (const { value } of t.objectStore('post')) {
         const idResult = PostIVIdentifier.from(value.identifier)
-        if (idResult.none) {
+        if (idResult.isNone()) {
             console.warn('Invalid identifier', value.identifier)
             continue
         }
-        const id = idResult.val
+        const id = idResult.value
         if (typeof query === 'string') {
             if (id.network === query) selected.push(postOutDB(value))
         } else {
@@ -237,51 +235,6 @@ export async function queryPostsDB(
         }
     }
     return selected
-}
-
-/**
- * Query posts by paged
- * @internal
- */
-export async function queryPostPagedDB(
-    linked: PersonaIdentifier,
-    options: {
-        network: string
-        userIds: string[]
-        after?: PostIVIdentifier
-        page?: number
-    },
-    count: number,
-): Promise<PostRecord[]> {
-    const t = createTransaction(await db(), 'readonly')('post')
-
-    const data: PostRecord[] = []
-    let firstRecord = true
-
-    for await (const cursor of t.objectStore('post').iterate()) {
-        if (cursor.value.encryptBy !== linked.toText()) continue
-        if (!cursor.value.postBy) continue
-        if (!options.userIds.includes(cursor.value.postBy.userId)) continue
-
-        const postIdentifier = PostIVIdentifier.from(cursor.value.identifier).expect(
-            `data stored in the post database should be a valid PostIVIdentifier, but found ${cursor.value.identifier}`,
-        )
-        if (postIdentifier.network !== options.network) continue
-
-        if (firstRecord && options.after) {
-            cursor.continue(options.after.toText())
-            firstRecord = false
-            continue
-        }
-
-        if (postIdentifier === options.after) continue
-
-        if (count <= 0) break
-        const outData = postOutDB(cursor.value)
-        count -= 1
-        data.push(outData)
-    }
-    return data
 }
 
 function postOutDB(db: LatestPostDBRecord): PostRecord {
@@ -293,10 +246,10 @@ function postOutDB(db: LatestPostDBRecord): PostRecord {
         recipients = new Map()
         for (const [id, { reason }] of db.recipients) {
             const identifier = ProfileIdentifier.from(id)
-            if (identifier.none) continue
+            if (identifier.isNone()) continue
             const detail = reason[0]
             if (!detail) continue
-            recipients.set(identifier.val, detail.at)
+            recipients.set(identifier.value, detail.at)
         }
     }
     return {

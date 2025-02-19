@@ -1,18 +1,14 @@
-import type { PluginID } from '@masknet/shared-base'
 import { makeStyles, usePortalShadowRoot } from '@masknet/theme'
 import { Box, Button, Portal, Typography } from '@mui/material'
-import React, {
+import {
     cloneElement,
     createContext,
-    type PropsWithChildren,
-    type ReactElement,
-    useEffect,
     useLayoutEffect,
-    useRef,
     useState,
-    useMemo,
+    type ReactElement,
+    type ReactNode,
+    type Ref,
 } from 'react'
-import { usePluginGuideRecord } from './usePluginGuideRecord.js'
 
 const useStyles = makeStyles()((theme) => ({
     container: {
@@ -75,17 +71,25 @@ const useStyles = makeStyles()((theme) => ({
     button: {
         width: '100%',
         borderRadius: '20px',
+        backgroundColor: theme.palette.maskColor.bottom,
+        color: theme.palette.maskColor.main,
+        '&:hover': {
+            backgroundColor: theme.palette.maskColor.bottom,
+        },
     },
 }))
 
-export interface GuideStepProps extends PropsWithChildren<{}> {
+interface GuideStepProps {
+    // cloneElement is used.
+    // eslint-disable-next-line @typescript-eslint/no-restricted-types
+    children: ReactElement<{ ref: Ref<HTMLElement | null> }>
     step: number
     totalStep: number
     arrow?: boolean
     finished?: boolean
     currentStep: number
-    title: string
-    actionText: string
+    title: ReactNode
+    actionText: ReactNode
     onNext?: () => void
 }
 
@@ -101,23 +105,24 @@ export function PluginGuide({
     onNext,
 }: GuideStepProps) {
     const { classes, cx } = useStyles()
-    const childrenRef = useRef<HTMLElement>()
+    const [childrenRef, setChildrenRef] = useState<HTMLElement | null>(null)
 
     const [clientRect, setClientRect] = useState<any>({})
-    const [open, setOpen] = useState(false)
     const [bottomAvailable, setBottomAvailable] = useState(true)
 
-    const stepVisible = !finished && currentStep === step && !!clientRect?.top && !!clientRect.left
+    const targetVisible = !!clientRect.top && !!clientRect.left && !!clientRect.height && clientRect.width
+    const stepVisible = !finished && currentStep === step && targetVisible
 
     useLayoutEffect(() => {
-        document.body.style.overflow = open ? 'hidden' : ''
-    }, [open])
+        document.documentElement.style.overflow = stepVisible ? 'hidden' : ''
+        document.documentElement.style.paddingLeft = 'calc(100vw - 100%)'
+    }, [stepVisible])
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         if (finished) return
 
-        const onResize = () => {
-            const cr = childrenRef.current?.getBoundingClientRect()
+        const updateClientRect = () => {
+            const cr = childrenRef?.getBoundingClientRect()
 
             if (cr) {
                 const bottomAvailable = window.innerHeight - cr.height - cr.top > 200
@@ -129,28 +134,23 @@ export function PluginGuide({
                 }
             }
         }
+        updateClientRect()
 
-        onResize()
-
-        window.addEventListener('resize', onResize)
-
-        return () => {
-            window.removeEventListener('resize', onResize)
-        }
+        window.addEventListener('resize', updateClientRect)
+        return () => window.removeEventListener('resize', updateClientRect)
     }, [childrenRef, finished])
 
     return (
         <>
-            {cloneElement(children as ReactElement, { ref: childrenRef })}
+            {cloneElement(children, { ref: (ref: any) => setChildrenRef(ref) })}
             {usePortalShadowRoot((container) => {
                 if (!stepVisible) return null
                 return (
-                    <Portal container={container}>
+                    <Portal container={container} ref={() => {}}>
                         <div
                             className={classes.mask}
                             onClick={(e) => {
                                 e.stopPropagation()
-                                setOpen(false)
                             }}>
                             <div
                                 className={classes.container}
@@ -168,7 +168,10 @@ export function PluginGuide({
                                         onClick={(e) => e.stopPropagation()}
                                         className={cx(
                                             classes.card,
-                                            arrow ? (bottomAvailable ? 'arrow-top' : 'arrow-bottom') : '',
+                                            arrow ?
+                                                bottomAvailable ? 'arrow-top'
+                                                :   'arrow-bottom'
+                                            :   '',
                                         )}
                                         style={{
                                             left: clientRect.width < 50 ? -clientRect.width / 2 + 5 : 0,
@@ -187,11 +190,7 @@ export function PluginGuide({
                                             </Typography>
                                         </div>
                                         <div className={classes.buttonContainer}>
-                                            <Button
-                                                variant="outlined"
-                                                color="primary"
-                                                className={classes.button}
-                                                onClick={onNext}>
+                                            <Button color="primary" className={classes.button} onClick={onNext}>
                                                 {actionText}
                                             </Button>
                                         </div>
@@ -215,34 +214,3 @@ interface PluginGuideContext {
     nextStep: () => void
 }
 const PluginGuideContext = createContext<PluginGuideContext>(null!)
-
-export function PluginGuideProvider({
-    value,
-    children,
-}: React.ProviderProps<{
-    pluginID: PluginID
-    totalStep: number
-    storageKey?: string
-    onFinish?: () => void
-    guides: Array<{
-        title: string
-        actionText: string
-    }>
-}>) {
-    const { guides, totalStep, onFinish, storageKey = 'default', pluginID } = value
-    const { currentStep, finished, nextStep } = usePluginGuideRecord(pluginID, totalStep, storageKey, onFinish)
-    const title = guides[currentStep - 1]?.title
-    const actionText = guides[currentStep - 1]?.actionText
-    const context = useMemo(
-        () => ({
-            title,
-            actionText,
-            finished,
-            currentStep,
-            totalStep,
-            nextStep,
-        }),
-        [title, actionText, finished, currentStep, totalStep, nextStep],
-    )
-    return <PluginGuideContext.Provider value={context}>{children}</PluginGuideContext.Provider>
-}

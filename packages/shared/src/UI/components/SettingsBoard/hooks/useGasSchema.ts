@@ -1,6 +1,5 @@
 import { useMemo } from 'react'
 import { z as zod } from 'zod'
-import { useSharedI18N } from '@masknet/shared'
 import { type ChainId, formatGweiToWei, type GasOption, type Transaction } from '@masknet/web3-shared-evm'
 import {
     type GasOptionType,
@@ -10,8 +9,8 @@ import {
     isPositive,
     multipliedBy,
 } from '@masknet/web3-shared-base'
-import { NetworkPluginID } from '@masknet/shared-base'
-import { useWeb3State } from '@masknet/web3-hooks-base'
+import { msg } from '@lingui/core/macro'
+import { useLingui } from '@lingui/react'
 
 const HIGH_FEE_WARNING_MULTIPLIER = 1.5
 
@@ -20,29 +19,29 @@ export function useGasSchema(
     transaction: Transaction | undefined,
     gasOptions: Record<GasOptionType, GasOption> | undefined,
 ) {
-    const t = useSharedI18N()
-    const { Others } = useWeb3State(NetworkPluginID.PLUGIN_EVM)
+    const { _ } = useLingui()
+
     return useMemo(() => {
         return zod
             .object({
                 gasLimit: zod
                     .string()
-                    .min(1, t.gas_settings_error_gas_limit_absence())
+                    .min(1, _(msg`Enter a gas limit`))
                     .refine(
                         (gasLimit) => isGreaterThanOrEqualTo(gasLimit, transaction?.gas ?? 21000),
-                        t.gas_settings_error_gas_limit_too_low(),
+                        _(msg`Gas limit too low will cause the transaction to fail.`),
                     ),
                 gasPrice: zod
                     .string()
-                    .min(1, t.gas_settings_error_gas_price_absence())
-                    .refine(isPositive, t.gas_settings_error_gas_price_positive())
+                    .min(1, _(msg`Enter a gas price`))
+                    .refine(isPositive, _(msg`Gas price must be greater than 0 Gwei.`))
                     .refine(
                         (value) =>
                             isGreaterThanOrEqualTo(
                                 formatGweiToWei(value),
                                 gasOptions?.slow?.suggestedMaxFeePerGas ?? 0,
                             ),
-                        t.gas_settings_error_gas_price_too_low(),
+                        _(msg`Gas price is too low for network conditions.`),
                     )
                     .refine(
                         (value) =>
@@ -50,19 +49,19 @@ export function useGasSchema(
                                 formatGweiToWei(value),
                                 multipliedBy(gasOptions?.fast?.suggestedMaxFeePerGas ?? 0, HIGH_FEE_WARNING_MULTIPLIER),
                             ),
-                        t.gas_settings_error_gas_price_too_high(),
+                        _(msg`Gas price is higher than necessary. You may pay more than needed.`),
                     ),
                 maxPriorityFeePerGas: zod
                     .string()
-                    .min(1, t.gas_settings_error_max_priority_fee_absence())
-                    .refine(isPositive, t.gas_settings_error_max_priority_gas_fee_positive())
+                    .min(1, _(msg`Enter a max priority fee`))
+                    .refine(isPositive, _(msg`Max priority fee must be greater than 0 Gwei.`))
                     .refine(
                         (value) =>
                             isGreaterThanOrEqualTo(
                                 formatGweiToWei(value),
                                 gasOptions?.slow?.suggestedMaxPriorityFeePerGas ?? 0,
                             ),
-                        t.gas_settings_error_max_priority_gas_fee_too_low(),
+                        _(msg`Max priority fee is too low for network conditions.`),
                     )
                     .refine(
                         (value) =>
@@ -73,18 +72,18 @@ export function useGasSchema(
                                     HIGH_FEE_WARNING_MULTIPLIER,
                                 ),
                             ),
-                        t.gas_settings_error_max_priority_gas_fee_too_high(),
+                        _(msg`Max priority fee is higher than necessary. You may pay more than needed.`),
                     ),
                 maxFeePerGas: zod
                     .string()
-                    .min(1, t.gas_settings_error_max_fee_absence())
+                    .min(1, _(msg`Enter a max fee`))
                     .refine(
                         (value) =>
                             isGreaterThanOrEqualTo(
                                 formatGweiToWei(value),
                                 gasOptions?.slow?.suggestedMaxFeePerGas ?? 0,
                             ),
-                        t.gas_settings_error_max_fee_too_low(),
+                        _(msg`Max fee is too low for network conditions.`),
                     )
                     .refine(
                         (value) =>
@@ -92,12 +91,12 @@ export function useGasSchema(
                                 formatGweiToWei(value),
                                 multipliedBy(gasOptions?.fast?.suggestedMaxFeePerGas ?? 0, HIGH_FEE_WARNING_MULTIPLIER),
                             ),
-                        t.gas_settings_error_max_fee_too_high(),
+                        _(msg`Max fee is higher than necessary.`),
                     ),
             })
             .refine((data) => isLessThanOrEqualTo(data.maxPriorityFeePerGas, data.maxFeePerGas), {
-                message: t.gas_settings_error_max_priority_gas_fee_imbalance(),
+                message: _(msg`Max fee cannot be lower than max priority fee.`),
                 path: ['maxFeePerGas'],
             })
-    }, [t, transaction?.gas, gasOptions, Others])
+    }, [_, transaction?.gas, gasOptions])
 }

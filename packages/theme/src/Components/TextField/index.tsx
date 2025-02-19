@@ -1,4 +1,5 @@
-import { type ForwardedRef, forwardRef } from 'react'
+import { omit } from 'lodash-es'
+import type { BoxProps } from '@mui/system'
 import {
     Box,
     formHelperTextClasses,
@@ -7,14 +8,12 @@ import {
     type InputProps,
     Typography,
     InputBase,
+    inputBaseClasses,
+    alpha,
 } from '@mui/material'
+import { Sniffings } from '@masknet/shared-base'
 import { makeStyles } from '../../UIHelper/makeStyles.js'
-import { getMaskColor, MaskColorVar } from '../../CSSVariables/vars.js'
-import { isDashboardPage } from '@masknet/shared-base'
-import { omit } from 'lodash-es'
-import type { BoxProps } from '@mui/system'
-
-const isDashboard = isDashboardPage()
+import { MaskColorVar, getMaskColor } from '../../CSSVariables/vars.js'
 
 const useStyles = makeStyles()((theme) => ({
     label: {
@@ -32,30 +31,41 @@ const useStyles = makeStyles()((theme) => ({
     field: {
         width: '100%',
         [`& > .${formHelperTextClasses.root}`]: {
-            marginTop: theme.spacing(0.8),
-            paddingLeft: theme.spacing(0.5),
-            borderLeft: 'solid 2px',
+            paddingTop: theme.spacing(1),
             borderRadius: '2px',
-            fontSize: 12,
+            fontSize: 14,
             lineHeight: '16px',
         },
+        '& input[type=number]': {
+            MozAppearance: 'textfield',
+            WebkitAppearance: 'none',
+        },
+        '& input[type=number]::-webkit-outer-spin-button': {
+            WebkitAppearance: 'none',
+        },
+        '& input[type=number]::-webkit-inner-spin-button': {
+            WebkitAppearance: 'none',
+        },
         '& input::-webkit-input-placeholder': {
-            color: !isDashboard ? theme.palette.maskColor.second : undefined,
+            color: theme.palette.maskColor.third,
+        },
+        [`&.${inputBaseClasses.focused}`]: {
+            background: 'transparent',
         },
     },
     input: {
         padding: theme.spacing(1),
-        background: !isDashboard
-            ? theme.palette.maskColor.input
-            : theme.palette.mode === 'dark'
-            ? '#2B2E4C'
-            : '#F6F6F8',
+        background: theme.palette.maskColor.input,
         fontSize: 13,
         lineHeight: '16px',
         borderRadius: 6,
+        border: '1px solid transparent',
         [`&.${formHelperTextClasses.error}`]: {
             boxShadow: `0 0 0 ${theme.spacing(0.5)} ${MaskColorVar.redMain.alpha(0.2)}`,
-            border: `1px solid ${MaskColorVar.redMain.alpha(0.8)}`,
+            borderColor: MaskColorVar.redMain.alpha(0.8),
+        },
+        [`&.${formHelperTextClasses.focused}`]: {
+            borderColor: Sniffings.is_dashboard_page ? alpha(theme.palette.maskColor.primary, 0.5) : 'transparent',
         },
     },
     inputDisabled: {
@@ -63,8 +73,13 @@ const useStyles = makeStyles()((theme) => ({
         color: 'rgba(255, 255, 255, 0.4)',
     },
     inputFocused: {
-        backgroundColor: !isDashboard ? theme.palette.maskColor.input : MaskColorVar.primaryBackground,
-        boxShadow: `0 0 0 2px ${theme.palette.mode === 'dark' ? '#4F5378' : 'rgba(28, 104, 243, 0.2)'}`,
+        background: 'transparent',
+        ...(Sniffings.is_dashboard_page ?
+            {
+                outline: `2px solid ${alpha(theme.palette.maskColor.primary, 0.2)}`,
+                borderColor: alpha(theme.palette.maskColor.primary, 0.5),
+            }
+        :   { boxShadow: `0 0 0 2px ${theme.palette.mode === 'dark' ? '#4F5378' : 'rgba(28, 104, 243, 0.2)'}` }),
     },
 }))
 
@@ -72,26 +87,25 @@ export interface MaskTextFieldProps extends Exclude<StandardTextFieldProps, 'var
     wrapperProps?: BoxProps
 }
 
-export const MaskTextField = forwardRef((props: MaskTextFieldProps, ref: ForwardedRef<any>) => {
+export function MaskTextField(props: MaskTextFieldProps) {
     const { label, sx, required = false, className, wrapperProps, helperText, ...rest } = props
-    const inputProps = (props.InputProps as InputProps) ?? {}
-    const { classes } = useStyles()
+    const InputProps = (props.InputProps as InputProps) ?? {}
+    const { classes, cx } = useStyles()
     return (
         <Box sx={sx} {...wrapperProps}>
-            {label && typeof label === 'string' ? (
+            {label && typeof label === 'string' ?
                 <Typography sx={{ mb: 1 }} variant="body2" className={classes.label}>
                     {label}
-                    {required ? (
+                    {required ?
                         <Typography className={classes.required} component="span">
                             *
                         </Typography>
-                    ) : null}
+                    :   null}
                 </Typography>
-            ) : null}
+            :   null}
             {label && typeof label !== 'string' ? label : null}
-            {isDashboard ? (
+            {Sniffings.is_dashboard_page ?
                 <TextField
-                    ref={ref}
                     {...rest}
                     classes={{ root: classes.field }}
                     variant="standard"
@@ -99,18 +113,32 @@ export const MaskTextField = forwardRef((props: MaskTextFieldProps, ref: Forward
                     helperText={helperText}
                     InputProps={{
                         disableUnderline: true,
-                        className: classes.input,
                         classes: {
                             disabled: classes.inputDisabled,
                             focused: classes.inputFocused,
-                            ...inputProps.classes,
+                            ...InputProps.classes,
                         },
-                        ...inputProps,
+                        ...InputProps,
+                        className: cx(classes.input, InputProps.className),
                     }}
                 />
-            ) : (
-                <InputBase {...inputProps} {...omit(rest, 'margin', 'onKeyDown', 'onKeyUp', 'InputProps')} />
-            )}
+            :   <InputBase
+                    className={classes.field}
+                    {...omit(InputProps, 'disableUnderline')}
+                    {...omit(
+                        rest,
+                        'margin',
+                        'onKeyDown',
+                        'onKeyUp',
+                        'InputProps',
+                        'inputProps',
+                        'FormHelperTextProps',
+                        'onInvalid',
+                    )}
+                />
+            }
         </Box>
     )
-})
+}
+
+MaskTextField.displayName = 'MaskTextField'

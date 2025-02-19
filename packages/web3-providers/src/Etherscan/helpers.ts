@@ -1,10 +1,7 @@
 import type { Transaction } from './types.js'
 import type { ExplorerAPI } from '../entry-types.js'
 
-export function toTransaction(transaction: Transaction): ExplorerAPI.Transaction & {
-    status: '0' | '1'
-    confirmations: number
-} {
+export function toTransaction(transaction: Transaction): ExplorerAPI.Transaction {
     return {
         nonce: Number.parseInt(transaction.nonce, 10),
         blockHash: transaction.blockHash,
@@ -17,6 +14,7 @@ export function toTransaction(transaction: Transaction): ExplorerAPI.Transaction
         input: transaction.input,
         transactionIndex: Number.parseInt(transaction.transactionIndex, 10),
         value: transaction.value,
+        // cspell:disable-next-line
         status: transaction.txreceipt_status,
         confirmations: Number.parseInt(transaction.confirmations, 10),
     }

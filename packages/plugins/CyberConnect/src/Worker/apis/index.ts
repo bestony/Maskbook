@@ -7,7 +7,7 @@ import {
 } from '@masknet/shared-base'
 import { PageSize, ProfileTab } from '../../constants.js'
 
-export interface IQuery {
+interface IQuery {
     query: string
     variables: Record<string, string | number>
 }
@@ -17,14 +17,8 @@ export interface IFollowIdentity {
     ens: string
     namespace: string
 }
-export interface IFollowPageInfo {
-    endCursor: number
-    hasNextPage: boolean
-    hasPreviousPage: boolean
-    startCursor: number
-}
 
-export interface IIdentity {
+interface IIdentity {
     address: string
     avatar: string
     domain: string
@@ -38,15 +32,15 @@ export interface IIdentity {
         list: IFollowIdentity[]
     }
 }
-export interface IFollowStatus {
+interface IFollowStatus {
     isFollowing: boolean
     isFollowed: boolean
 }
 async function query(data: IQuery) {
     const url =
-        process.env.NODE_ENV === 'production'
-            ? 'https://api.cybertino.io/connect/'
-            : 'https://api.stg.cybertino.io/connect/'
+        process.env.NODE_ENV === 'production' ?
+            'https://api.cybertino.io/connect/'
+        :   'https://api.stg.cybertino.io/connect/'
 
     const res = await fetch(url, {
         method: 'POST',
@@ -85,9 +79,9 @@ export async function fetchFollowers(
     const data = {
         query: `query FullIdentityQuery {
         identity(address: "${address.toLowerCase()}") {
-                ${category.toLowerCase()}(first: ${size > PageSize ? PageSize : size}, after: "${
-            Number.parseInt(indicator?.id ?? '0', 10) - 1
-        }"){
+                ${category.toLowerCase()}(first: ${Math.min(size, PageSize)}, after: "${
+                    Number.parseInt(indicator?.id ?? '0', 10) - 1
+                }"){
                 pageInfo {
                     hasNextPage
                     hasPreviousPage
@@ -109,16 +103,16 @@ export async function fetchFollowers(
         return createPageable(
             res.data.identity.followings.list,
             createIndicator(indicator),
-            res.data.identity.followings.pageInfo.hasNextPage
-                ? createNextIndicator(indicator, res.data.identity.followings.pageInfo.endCursor)
-                : undefined,
+            res.data.identity.followings.pageInfo.hasNextPage ?
+                createNextIndicator(indicator, res.data.identity.followings.pageInfo.endCursor)
+            :   undefined,
         )
     return createPageable(
         res.data.identity.followers.list,
         createIndicator(indicator),
-        res.data.identity.followers.pageInfo.hasNextPage
-            ? createNextIndicator(indicator, res.data.identity.followers.pageInfo.endCursor)
-            : undefined,
+        res.data.identity.followers.pageInfo.hasNextPage ?
+            createNextIndicator(indicator, res.data.identity.followers.pageInfo.endCursor)
+        :   undefined,
     )
 }
 

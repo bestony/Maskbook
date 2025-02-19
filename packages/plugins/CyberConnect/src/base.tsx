@@ -1,6 +1,7 @@
 import type { Plugin } from '@masknet/plugin-infra'
+import { DEFAULT_PLUGIN_PUBLISHER } from '@masknet/shared-base'
 import { CYBERCONNECT_PLUGIN_ID } from './constants.js'
-import { languages } from './locales/languages.js'
+import { languages } from './locale/languages.js'
 
 export const base: Plugin.Shared.Definition = {
     ID: CYBERCONNECT_PLUGIN_ID,
@@ -8,10 +9,10 @@ export const base: Plugin.Shared.Definition = {
     description: {
         fallback: 'A plugin for https://cyberconnect.me/',
     },
-    publisher: { name: { fallback: 'Mask Network' }, link: 'https://mask.io/' },
+    publisher: DEFAULT_PLUGIN_PUBLISHER,
     enableRequirement: {
-        networks: { type: 'opt-out', networks: {} },
-        target: 'stable',
+        supports: { type: 'opt-in', sites: {} },
+        target: 'insider',
     },
     contribution: { postContent: new Set([/https:\/\/app.cyberconnect.me/]) },
     i18n: languages,

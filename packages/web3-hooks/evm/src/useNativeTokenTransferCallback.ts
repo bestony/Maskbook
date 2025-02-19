@@ -1,24 +1,23 @@
 import { useAsyncFn } from 'react-use'
-import { EthereumAddress } from 'wallet.ts'
-import { toHex } from 'web3-utils'
+import * as web3_utils from /* webpackDefer: true */ 'web3-utils'
+import { EVMWeb3 } from '@masknet/web3-providers'
+import { useChainContext } from '@masknet/web3-hooks-base'
 import { isGreaterThan, isZero } from '@masknet/web3-shared-base'
-import { NetworkPluginID } from '@masknet/shared-base'
-import { type GasConfig, TransactionEventType } from '@masknet/web3-shared-evm'
-import { useChainContext, useWeb3 } from '@masknet/web3-hooks-base'
+import type { NetworkPluginID } from '@masknet/shared-base'
+import { isValidAddress, type GasConfig, type ChainId } from '@masknet/web3-shared-evm'
 
-export function useNativeTransferCallback() {
-    const { account, chainId } = useChainContext<NetworkPluginID.PLUGIN_EVM>()
-    const web3 = useWeb3(NetworkPluginID.PLUGIN_EVM)
+export function useNativeTransferCallback(expectedChainId?: ChainId) {
+    const { account, chainId } = useChainContext<NetworkPluginID.PLUGIN_EVM>({ chainId: expectedChainId })
 
     return useAsyncFn(
         async (amount?: string, recipient?: string, gasConfig?: GasConfig, memo?: string) => {
-            if (!account || !recipient || !amount || isZero(amount) || !web3) return
+            if (!account || !recipient || !amount || isZero(amount)) return
 
             // error: invalid recipient address
-            if (!EthereumAddress.isValid(recipient)) return
+            if (!isValidAddress(recipient)) return
 
             // error: insufficient balance
-            const balance = await web3.eth.getBalance(account)
+            const balance = await EVMWeb3.getBalance(account)
 
             if (isGreaterThan(amount, balance)) return
 
@@ -26,33 +25,23 @@ export function useNativeTransferCallback() {
             const config = {
                 from: account,
                 to: recipient,
-                gas: await web3.eth
-                    .estimateGas({
-                        from: account,
-                        to: recipient,
-                        value: amount,
-                        data: memo ? toHex(memo) : undefined,
-                    })
-                    .catch((error) => {
-                        throw error
-                    }),
+                gas: await EVMWeb3.estimateTransaction?.({
+                    from: account,
+                    to: recipient,
+                    value: amount,
+                    data: memo ? web3_utils.toHex(memo) : undefined,
+                }).catch((error) => {
+                    throw error
+                }),
                 value: amount,
-                data: memo ? toHex(memo) : undefined,
+                data: memo ? web3_utils.toHex(memo) : undefined,
                 ...gasConfig,
+                chainId,
             }
 
             // send transaction and wait for hash
-            return new Promise<string>((resolve, reject) => {
-                web3.eth
-                    .sendTransaction(config, (error) => {
-                        if (!error) return
-                        reject(error)
-                    })
-                    .on(TransactionEventType.CONFIRMATION, (_, receipt) => {
-                        resolve(receipt.transactionHash)
-                    })
-            })
+            return EVMWeb3.sendTransaction(config)
         },
-        [web3, account, chainId],
+        [account, chainId],
     )
 }

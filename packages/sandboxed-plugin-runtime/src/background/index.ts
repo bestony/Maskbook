@@ -1,9 +1,9 @@
 import { PluginRuntime } from '../runtime/runtime.js'
-import { type BasicHostHooks, type BasicHostInstance, PluginRunner } from '../runtime/runner.js'
+import { type BasicHostHooks, type BasicHostInstance, SandboxedPluginHost } from '../runtime/runner.js'
 import { getURL } from '../utils/url.js'
 import { addPeerDependencies } from '../peer-dependencies/index.js'
 import { AsyncCall, AsyncGeneratorCall } from 'async-call-rpc/full'
-import { serializer } from '@masknet/shared-base'
+import { encoder } from '@masknet/shared-base'
 import { isManifest } from '../utils/manifest.js'
 import type { ExportAllBinding } from '@masknet/compartment'
 import type { BackupHandler } from '../types/worker-api.js'
@@ -15,7 +15,7 @@ export interface BackgroundHostHooks extends BasicHostHooks {
 export interface BackgroundInstance extends BasicHostInstance {
     backupHandler?: BackupHandler
 }
-export class BackgroundPluginHost extends PluginRunner<BackgroundHostHooks, BackgroundInstance> {
+export class BackgroundPluginHost extends SandboxedPluginHost<BackgroundHostHooks, BackgroundInstance> {
     constructor(
         hooks: BackgroundHostHooks,
         allowLocalOverrides: boolean,
@@ -55,7 +55,7 @@ export class BackgroundPluginHost extends PluginRunner<BackgroundHostHooks, Back
         }
         await this.bindRPC(instance, rpc, rpcGenerator)
         if (background) await runtime.imports(getURL(id, background, isLocal))
-        await this.startRPC(instance, !!rpc, !!rpcGenerator)
+        await this.startService(instance, !!rpc, !!rpcGenerator)
         return instance
     }
 
@@ -71,22 +71,24 @@ export class BackgroundPluginHost extends PluginRunner<BackgroundHostHooks, Back
             })
         instance.runtime.addReExportModule('@masknet/plugin/utils/rpc', ...rpcReExports)
     }
-    private async startRPC(instance: BackgroundInstance, hasRPC: boolean, hasRPCGenerator: boolean) {
+    private async startService(instance: BackgroundInstance, hasRPC: boolean, hasRPCGenerator: boolean) {
         const rpcReExport = await instance.runtime.imports('@masknet/plugin/utils/rpc')
         if (hasRPC) {
             AsyncCall(rpcReExport.worker, {
                 channel: this.hooks.createRpcChannel(instance.id, this.signal),
-                serializer,
+                encoder,
                 log: true,
                 thenable: false,
+                signal: this.signal,
             })
         }
         if (hasRPCGenerator) {
             AsyncGeneratorCall(rpcReExport.workerGenerator, {
                 channel: this.hooks.createRpcGeneratorChannel(instance.id, this.signal),
-                serializer,
+                encoder,
                 log: true,
                 thenable: false,
+                signal: this.signal,
             })
         }
     }

@@ -1,7 +1,7 @@
-/* eslint @dimensiondev/unicode-specific-set: ["error", { "only": "code" }] */
+/* eslint @masknet/unicode-specific-set: ["error", { "only": "code" }] */
 import type { PayloadParseResult, Signature } from '../payload/index.js'
 import { Ok } from 'ts-results-es'
-import { PayloadException } from '../types/index.js'
+import { PayloadException, type Readwrite } from '../types/index.js'
 import { decodeUint8ArrayF, assertIVLengthEq16 } from '../utils/index.js'
 import type { PayloadParserResult } from './index.js'
 import { encodeText } from '@masknet/kit'
@@ -38,11 +38,11 @@ export async function parse40(payload: string): PayloadParserResult {
         encryption: Ok(encryption),
         encrypted: decodeUint8Array(encryptedText),
     }
-    if (signature && encryption.iv.ok && encryption.ownersAESKeyEncrypted.ok && normalized.encrypted.ok) {
+    if (signature && encryption.iv.isOk() && encryption.ownersAESKeyEncrypted.isOk() && normalized.encrypted.isOk()) {
         const message = encodeText(`4/4|${ownersAESKeyEncrypted}|${iv}|${encryptedText}`)
         const sig = decodeUint8Array(signature)
-        if (sig.ok) {
-            normalized.signature = OptionalResult.Some<Signature>({ signee: message, signature: sig.val })
+        if (sig.isOk()) {
+            normalized.signature = OptionalResult.Some<Signature>({ signee: message, signature: sig.value })
         } else {
             normalized.signature = sig
         }

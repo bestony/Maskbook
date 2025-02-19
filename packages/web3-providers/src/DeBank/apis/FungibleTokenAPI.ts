@@ -1,43 +1,49 @@
 import urlcat from 'urlcat'
 import { unionWith } from 'lodash-es'
-import { type HubOptions, isSameAddress, type FungibleToken } from '@masknet/web3-shared-base'
+import { isSameAddress, type FungibleToken } from '@masknet/web3-shared-base'
 import { createPageable, createIndicator } from '@masknet/shared-base'
 import type { ChainId, SchemaType } from '@masknet/web3-shared-evm'
-import { FungibleTokenAPI as EVM_FungibleTokenAPI } from '../../Connection/index.js'
-import { formatAssets, resolveDeBankAssetId } from '../helpers.js'
-import type { WalletTokenRecord } from '../types.js'
-import { fetchJSON, getNativeAssets } from '../../entry-helpers.js'
-import type { FungibleTokenAPI } from '../../entry-types.js'
+import { FungibleTokenAPI as EVM_FungibleTokenAPI } from '../../Web3/EVM/apis/FungibleTokenAPI.js'
+import { formatAssets } from '../helpers.js'
+import type { WalletTokenRecord, UserTotalBalance } from '../types.js'
+import { DEBANK_OPEN_API } from '../constants.js'
+import { Duration } from '../../helpers/fetchCached.js'
+import { fetchCachedJSON } from '../../helpers/fetchJSON.js'
+import { getNativeAssets } from '../../helpers/getNativeAssets.js'
+import type { FungibleTokenAPI, BaseHubOptions } from '../../entry-types.js'
 
-const DEBANK_OPEN_API = 'https://debank-proxy.r2d2.to'
+class DeBankFungibleTokenAPI implements FungibleTokenAPI.Provider<ChainId, SchemaType> {
+    private FungibleToken = new EVM_FungibleTokenAPI()
 
-export class DeBankFungibleTokenAPI implements FungibleTokenAPI.Provider<ChainId, SchemaType> {
-    private fungibleToken = new EVM_FungibleTokenAPI()
-
-    async getAssets(address: string, options?: HubOptions<ChainId>) {
-        const result = await fetchJSON<WalletTokenRecord[] | undefined>(
-            urlcat(DEBANK_OPEN_API, '/v1/user/all_token_list', {
-                id: address,
-                is_all: false,
-            }),
-        )
+    async getAssets(address: string, options?: BaseHubOptions<ChainId>) {
+        const result = (
+            await fetchCachedJSON<WalletTokenRecord[] | undefined>(
+                urlcat(DEBANK_OPEN_API, '/v1/user/all_token_list', {
+                    id: address,
+                    is_all: true,
+                }),
+                undefined,
+                {
+                    cacheDuration: Duration.TEN_SECONDS,
+                },
+            )
+        )?.filter((x) => x.is_verified)
 
         return createPageable(
             unionWith(
                 formatAssets(
-                    (result ?? []).map((x) => ({
-                        ...x,
-
-                        // rename bsc to bnb
-                        id: resolveDeBankAssetId(x.id),
-                        chain: resolveDeBankAssetId(x.chain),
-                        // prefix ARETH
-                        symbol: x.chain === 'arb' && x.symbol === 'ETH' ? 'ARETH' : x.symbol,
-                        logo_url:
-                            x.chain === 'arb' && x.symbol === 'ETH'
-                                ? 'https://assets.debank.com/static/media/arbitrum.8e326f58.svg'
-                                : x.logo_url,
-                    })),
+                    (result ?? []).map((x) => {
+                        const isEther = ['arb', 'aurora'].includes(x.chain) && ['ETH', 'AETH'].includes(x.name)
+                        return {
+                            ...x,
+                            name: isEther ? 'ETH' : x.name,
+                            symbol: isEther ? 'ETH' : x.symbol,
+                            logo_url:
+                                isEther ?
+                                    'https://imagedelivery.net/PCnTHRkdRhGodr0AWBAvMA/Assets/blockchains/ethereum/info/logo.png/quality=85'
+                                :   x.logo_url,
+                        }
+                    }),
                 ),
                 getNativeAssets(),
                 (a, z) => isSameAddress(a.address, z.address) && a.chainId === z.chainId,
@@ -49,9 +55,9 @@ export class DeBankFungibleTokenAPI implements FungibleTokenAPI.Provider<ChainId
     async getTrustedAssets(
         address: string,
         trustedFungibleTokens?: Array<FungibleToken<ChainId, SchemaType>>,
-        options?: HubOptions<ChainId>,
+        options?: BaseHubOptions<ChainId>,
     ) {
-        const trustTokenAssets = await this.fungibleToken.getTrustedAssets(address, trustedFungibleTokens, options)
+        const trustTokenAssets = await this.FungibleToken.getTrustedAssets(address, trustedFungibleTokens, options)
         return createPageable(
             unionWith(
                 trustTokenAssets.data,
@@ -61,4 +67,10 @@ export class DeBankFungibleTokenAPI implements FungibleTokenAPI.Provider<ChainId
             createIndicator(options?.indicator),
         )
     }
+
+    async getTotalBalance(/** address */ id: string) {
+        const url = urlcat(DEBANK_OPEN_API, '/v1/user/total_balance', { id })
+        return fetchCachedJSON<UserTotalBalance>(url)
+    }
 }
+export const DeBankFungibleToken = new DeBankFungibleTokenAPI()

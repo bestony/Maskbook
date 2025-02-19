@@ -3,15 +3,16 @@
   "compilerOptions": {
     "rootDir": "./",
     "outDir": "../dist/shared/",
-    "tsBuildInfoFile": "../dist/shared.tsbuildinfo",
-    "emitDeclarationOnly": true
+    "tsBuildInfoFile": "../dist/shared.tsbuildinfo"
   },
-  "include": ["./"],
+  "include": ["./**/*"],
   "exclude": ["./plugin-infra/register.js"],
   "references": [
-    { "path": "../../shared-base" },
-    { "path": "../../web3-providers" },
-    { "path": "../../plugin-infra" },
-    { "path": "../../sandboxed-plugin-runtime/src/runtime" }
+    { "path": "../../shared-base/tsconfig.json" },
+    { "path": "../../plugin-infra/tsconfig.json" },
+    { "path": "../../web3-telemetry/tsconfig.json" },
+    { "path": "../../web3-shared/base/tsconfig.json" },
+    { "path": "../../flags/tsconfig.json" },
+    { "path": "../../sandboxed-plugin-runtime/src/runtime/tsconfig.json" }
   ]
 }

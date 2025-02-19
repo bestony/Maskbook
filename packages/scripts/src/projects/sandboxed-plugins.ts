@@ -108,18 +108,18 @@ export async function buildSandboxedPluginConfigurable(distPath: string, isProdu
     await Promise.all([tasks, writeInternalList])
     await writeFile(
         join(distPath, './mv3-preload.js'),
-        mv3PreloadList.size
-            ? (function* () {
-                  yield `importScripts(\n`
-                  for (const file of mv3PreloadList) {
-                      if (file.includes('\\') || file.includes('"')) throw new TypeError('Invalid path')
-                      yield '    "/sandboxed-modules/'
-                      yield file
-                      yield '", \n'
-                  }
-                  yield `)\nnull`
-              })()
-            : 'null',
+        mv3PreloadList.size ?
+            (function* () {
+                yield `importScripts(\n`
+                for (const file of mv3PreloadList) {
+                    if (file.includes('\\') || file.includes('"')) throw new TypeError('Invalid path')
+                    yield '    "/sandboxed-modules/'
+                    yield file
+                    yield '", \n'
+                }
+                yield `)\nnull`
+            })()
+        :   'null',
         { encoding: 'utf-8' },
     )
 }
@@ -210,7 +210,10 @@ async function getLocales(manifest: any, manifestPath: string): Promise<Locale[]
     )
 }
 class TransformStream extends Transform {
-    constructor(public origin: string, public onJS: (id: string, relative: string) => void) {
+    constructor(
+        public origin: string,
+        public onJS: (id: string, relative: string) => void,
+    ) {
         super({ objectMode: true, defaultEncoding: 'utf-8' })
     }
     wasm = require.resolve('@masknet/static-module-record-swc')

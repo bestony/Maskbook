@@ -3,24 +3,23 @@ import {
     decrypt,
     parsePayload,
     DecryptProgressKind,
-    EC_KeyCurveEnum,
+    EC_KeyCurve,
     type DecryptProgress,
-    type SocialNetworkEnum,
-    SocialNetworkEnumToProfileDomain,
+    type EncryptPayloadNetwork,
+    encryptPayloadNetworkToDomain,
     type EC_Key,
-    socialNetworkDecoder,
+    decodeByNetwork,
     steganographyDecodeImage,
-    DecryptError,
     DecryptErrorReasons,
     type DecryptReportedInfo,
 } from '@masknet/encryption'
 import {
     type AESCryptoKey,
-    ECKeyIdentifierFromJsonWebKey,
     type EC_JsonWebKey,
     type EC_Public_JsonWebKey,
     PostIVIdentifier,
     type ProfileIdentifier,
+    ECKeyIdentifier,
 } from '@masknet/shared-base'
 import type { TypedMessage } from '@masknet/typed-message'
 import { noop } from 'lodash-es'
@@ -38,15 +37,15 @@ import {
     GUN_queryPostKey_version37,
     GUN_queryPostKey_version39Or38,
     GUN_queryPostKey_version40,
-} from '../../network/gun/encryption/queryPostKey.js'
+} from '../../network/queryPostKey.js'
 
 export interface DecryptionContext {
-    currentSocialNetwork: SocialNetworkEnum
+    encryptPayloadNetwork: EncryptPayloadNetwork
     currentProfile: ProfileIdentifier | null
     authorHint: ProfileIdentifier | null
     postURL: string | undefined
 }
-export type SocialNetworkEncodedPayload =
+export type EncodedPayload =
     | {
           type: 'text'
           text: string
@@ -59,68 +58,71 @@ export type SocialNetworkEncodedPayload =
           type: 'image-url'
           image: string
       }
-const downloadImage = (url: string): Promise<ArrayBuffer> => fetch(url).then((x) => x.arrayBuffer())
+async function downloadImage(url: string): Promise<ArrayBuffer> {
+    const x = await fetch(url)
+    return x.arrayBuffer()
+}
 
 /**
  *
  * @param encoded If the encoded content is a text, it should only contain 1 payload. Extra payload will be ignored.
  * @param context
  */
-export async function* decryptionWithSocialNetworkDecoding(
-    encoded: SocialNetworkEncodedPayload,
+export async function* decryptWithDecoding(
+    encoded: EncodedPayload,
     context: DecryptionContext,
 ): AsyncGenerator<DecryptProgress, void, undefined> {
     let decoded: string | Uint8Array
     if (encoded.type === 'text') {
-        decoded = socialNetworkDecoder(context.currentSocialNetwork, encoded.text)[0]
+        decoded = decodeByNetwork(context.encryptPayloadNetwork, encoded.text)[0]
     } else {
         if (!context.authorHint) {
-            return yield new DecryptError(DecryptErrorReasons.UnrecognizedAuthor, undefined)
+            return yield { type: DecryptProgressKind.Error, error: new Error(DecryptErrorReasons.UnrecognizedAuthor) }
         }
         const result = await steganographyDecodeImage(encoded.image, {
             password: context.authorHint.toText(),
             downloadImage,
         })
         if (typeof result === 'string') {
-            decoded = socialNetworkDecoder(context.currentSocialNetwork, result)[0]
+            decoded = decodeByNetwork(context.encryptPayloadNetwork, result)[0]
         } else if (result === null) {
-            return yield new DecryptError(DecryptErrorReasons.NoPayloadFound, undefined)
+            return yield { type: DecryptProgressKind.Error, error: new Error(DecryptErrorReasons.NoPayloadFound) }
         } else {
             decoded = result
         }
     }
 
-    if (!decoded) return yield new DecryptError(DecryptErrorReasons.NoPayloadFound, undefined)
+    if (!decoded) return yield { type: DecryptProgressKind.Error, error: new Error(DecryptErrorReasons.NoPayloadFound) }
     yield* decryption(decoded, context)
 }
 
 const inMemoryCache = new Map<PostIVIdentifier, TypedMessage>()
 async function* decryption(payload: string | Uint8Array, context: DecryptionContext) {
     const parse = await parsePayload(payload)
-    if (parse.err) return null
+    if (parse.isErr()) return null
 
-    const { currentSocialNetwork, postURL, currentProfile, authorHint } = context
+    const { encryptPayloadNetwork, postURL, currentProfile, authorHint } = context
 
     // #region Identify the PostIdentifier
-    const iv = parse.val.encryption.unwrapOr(null)?.iv.unwrapOr(null)
+    const iv = parse.value.encryption.unwrapOr(null)?.iv.unwrapOr(null)
     {
         if (!iv) return null
         // iv is required to identify the post and it also used in comment encryption.
         const info: DecryptReportedInfo = {
             type: DecryptProgressKind.Info,
             iv,
-            version: parse.val.version,
+            version: parse.value.version,
         }
-        if (parse.val.encryption.ok) {
-            const val = parse.val.encryption.val
+        if (parse.value.encryption.isOk()) {
+            const val = parse.value.encryption.value
             info.publicShared = val.type === 'public'
-            if (val.type === 'E2E') info.isAuthorOfPost = val.ownersAESKeyEncrypted.ok
+            if (val.type === 'E2E') info.isAuthorOfPost = val.ownersAESKeyEncrypted.isOk()
         }
         yield info
     }
     const id = new PostIVIdentifier(
-        SocialNetworkEnumToProfileDomain(currentSocialNetwork),
-        encodeArrayBuffer(new Uint8Array(iv.buffer)),
+        encryptPayloadNetworkToDomain(encryptPayloadNetwork),
+        encodeArrayBuffer(new Uint8Array(iv)),
     )
     // #endregion
 
@@ -141,7 +143,7 @@ async function* decryption(payload: string | Uint8Array, context: DecryptionCont
 
     const progress = decrypt(
         {
-            message: parse.val,
+            message: parse.value,
             onDecrypted(message) {
                 inMemoryCache.set(id, message)
             },
@@ -163,40 +165,39 @@ async function* decryption(payload: string | Uint8Array, context: DecryptionCont
                 return Array.from((await deriveAESByECDH(pub)).values())
             },
             queryAuthorPublicKey(author, signal) {
+                // TODO: This should try to fetch publicKey from NextID
+                // but it is not urgent because all new posts has their publicKey embedded
                 return queryPublicKey(author || authorHint)
             },
             async *queryPostKey_version37(iv, signal) {
                 const author = await queryPublicKey(context.currentProfile)
-                if (!author)
-                    throw new DecryptError(DecryptErrorReasons.CurrentProfileDoesNotConnectedToPersona, undefined)
+                if (!author) throw new Error(DecryptErrorReasons.CurrentProfileDoesNotConnectedToPersona)
                 yield* GUN_queryPostKey_version37(
                     iv,
                     author,
-                    context.currentSocialNetwork,
+                    context.encryptPayloadNetwork,
                     signal || new AbortController().signal,
                 )
             },
             async *queryPostKey_version38(iv, signal) {
                 const author = await queryPublicKey(context.currentProfile)
-                if (!author)
-                    throw new DecryptError(DecryptErrorReasons.CurrentProfileDoesNotConnectedToPersona, undefined)
+                if (!author) throw new Error(DecryptErrorReasons.CurrentProfileDoesNotConnectedToPersona)
                 yield* GUN_queryPostKey_version39Or38(
                     -38,
                     iv,
                     author,
-                    context.currentSocialNetwork,
+                    context.encryptPayloadNetwork,
                     signal || new AbortController().signal,
                 )
             },
             async *queryPostKey_version39(iv, signal) {
                 const author = await queryPublicKey(context.currentProfile)
-                if (!author)
-                    throw new DecryptError(DecryptErrorReasons.CurrentProfileDoesNotConnectedToPersona, undefined)
+                if (!author) throw new Error(DecryptErrorReasons.CurrentProfileDoesNotConnectedToPersona)
                 yield* GUN_queryPostKey_version39Or38(
                     -39,
                     iv,
                     author,
-                    context.currentSocialNetwork,
+                    context.encryptPayloadNetwork,
                     signal || new AbortController().signal,
                 )
             },
@@ -232,7 +233,7 @@ async function storeAuthorPublicKey(
         // ! Skip store the public key because it might be a security problem.
         return
     }
-    if (pub.algr !== EC_KeyCurveEnum.secp256k1) {
+    if (pub.algr !== EC_KeyCurve.secp256k1) {
         throw new Error('TODO: support other curves')
     }
 
@@ -242,7 +243,7 @@ async function storeAuthorPublicKey(
     if (persona?.privateKey) return
 
     const key = (await crypto.subtle.exportKey('jwk', pub.key)) as EC_JsonWebKey
-    const otherPersona = await queryPersonaDB(await ECKeyIdentifierFromJsonWebKey(key))
+    const otherPersona = await queryPersonaDB((await ECKeyIdentifier.fromJsonWebKey(key)).unwrap())
     if (otherPersona?.privateKey) return
 
     return createProfileWithPersona(

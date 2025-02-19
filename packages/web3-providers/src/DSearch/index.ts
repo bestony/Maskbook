@@ -1,6 +1,6 @@
-import urlcat from 'urlcat'
-import { uniqWith } from 'lodash-es'
+import { EMPTY_LIST, NetworkPluginID } from '@masknet/shared-base'
 import type { Web3Helper } from '@masknet/web3-helpers'
+import { Web3Bio } from '@masknet/web3-providers'
 import {
     attemptUntil,
     type DomainResult,
@@ -13,7 +13,6 @@ import {
     SearchResultType,
     SourceType,
 } from '@masknet/web3-shared-base'
-import { EMPTY_LIST, NetworkPluginID } from '@masknet/shared-base'
 import {
     ChainId as ChainIdEVM,
     isValidAddress as isValidAddressEVM,
@@ -30,29 +29,31 @@ import {
     isValidDomain as isValidDomainSolana,
     isZeroAddress as isZeroAddressSolana,
 } from '@masknet/web3-shared-solana'
+import { Telemetry } from '@masknet/web3-telemetry'
+import { EventID, EventType } from '@masknet/web3-telemetry/types'
+import { uniqWith } from 'lodash-es'
+import urlcat from 'urlcat'
+import { ARBID } from '../ARBID/index.js'
 import { CoinGeckoSearchAPI } from '../CoinGecko/apis/DSearchAPI.js'
-import { CoinMarketCapSearchAPI } from '../CoinMarketCap/apis/DSearchAPI.js'
-import { NFTScanCollectionSearchAPI, NFTScanSearchAPI } from '../NFTScan/index.js'
-import { CoinGeckoTrendingAPI } from '../CoinGecko/apis/TrendingAPI.js'
-import type { DSearchBaseAPI } from '../types/DSearch.js'
-import { fetchJSON } from '../helpers/fetchJSON.js'
-import { RSS3API } from '../RSS3/index.js'
-import { ENS_API } from '../ENS/index.js'
-import { SpaceID_API } from '../SpaceID/index.js'
-import { NextIDProofAPI } from '../NextID/proof.js'
+import { CoinGeckoTrending } from '../CoinGecko/apis/TrendingAPI.js'
+import { ENS } from '../ENS/index.js'
+import { NFTScanCollectionSearchAPI, NFTScanSearchAPI } from '../NFTScan/apis/DSearchAPI.js'
 import { PlatformToChainIdMap } from '../RSS3/constants.js'
-import { getHandlers } from './rules.js'
+import { RSS3 } from '../RSS3/index.js'
+import { SpaceID } from '../SpaceID/index.js'
 import { DSEARCH_BASE_URL } from './constants.js'
+import { fetchFromDSearch } from './helpers.js'
+import { getHandlers } from './rules.js'
 
-const isValidAddress = (address?: string): boolean => {
+function isValidAddress(address?: string): boolean {
     return isValidAddressEVM(address) || isValidAddressFlow(address) || isValidAddressSolana(address)
 }
 
-const isZeroAddress = (address?: string): boolean => {
+function isZeroAddress(address?: string): boolean {
     return isZeroAddressEVM(address) || isZeroAddressFlow(address) || isZeroAddressSolana(address)
 }
 
-const isValidDomain = (domain?: string): boolean => {
+function isValidDomain(domain?: string): boolean {
     return isValidDomainEVM(domain) || isValidDomainFlow(domain) || isValidDomainSolana(domain)
 }
 
@@ -62,6 +63,7 @@ const handleRe = new RegExp(
         'csb',
         'bit',
         'eth',
+        'arb',
         'lens',
         'bnb',
         'crypto',
@@ -77,22 +79,14 @@ const handleRe = new RegExp(
     'i',
 )
 
-const isValidHandle = (handle: string): boolean => {
+function isValidHandle(handle: string): boolean {
     return handleRe.test(handle)
 }
 
-export class DSearchAPI<ChainId = Web3Helper.ChainIdAll, SchemaType = Web3Helper.SchemaTypeAll>
-    implements DSearchBaseAPI.Provider<ChainId, SchemaType, NetworkPluginID>
-{
+class DSearchAPI<ChainId = Web3Helper.ChainIdAll, SchemaType = Web3Helper.SchemaTypeAll> {
     private NFTScanClient = new NFTScanSearchAPI<ChainId, SchemaType>()
     private NFTScanCollectionClient = new NFTScanCollectionSearchAPI<ChainId, SchemaType>()
     private CoinGeckoClient = new CoinGeckoSearchAPI<ChainId, SchemaType>()
-    private CoinMarketCapClient = new CoinMarketCapSearchAPI<ChainId, SchemaType>()
-    private RSS3 = new RSS3API()
-    private CoinGeckoTrending = new CoinGeckoTrendingAPI()
-    private ENS = new ENS_API()
-    private SpaceID = new SpaceID_API()
-    private NextIDProof = new NextIDProofAPI()
 
     private parseKeyword(keyword: string): { word: string; field?: string } {
         const words = keyword.split(':')
@@ -114,18 +108,24 @@ export class DSearchAPI<ChainId = Web3Helper.ChainIdAll, SchemaType = Web3Helper
         const [address, chainId] = await attemptUntil(
             [
                 () =>
-                    this.ENS.lookup(domain).then((x = '') => {
-                        if (!x || isZeroAddressEVM(address)) throw new Error(`No result for ${domain}`)
+                    ENS.lookup(domain).then((x = '') => {
+                        if (!x || isZeroAddressEVM(x)) throw new Error(`No result for ${domain}`)
                         return [x, ChainIdEVM.Mainnet]
                     }),
                 () =>
-                    this.SpaceID.lookup(domain).then((x = '') => {
-                        if (!x || isZeroAddressEVM(address)) throw new Error(`No result for ${domain}`)
+                    SpaceID.lookup(domain).then((x = '') => {
+                        if (!x || isZeroAddressEVM(x)) throw new Error(`No result for ${domain}`)
                         return [x, ChainIdEVM.BSC]
+                    }),
+                () =>
+                    ARBID.lookup(domain).then((x = '') => {
+                        if (!x || isZeroAddressEVM(x)) throw new Error(`No result for ${domain}`)
+                        return [x, ChainIdEVM.Arbitrum]
                     }),
             ],
             ['', ChainIdEVM.Mainnet],
         )
+
         if (!isValidAddressEVM(address) || isZeroAddressEVM(address)) return EMPTY_LIST
 
         return [
@@ -141,7 +141,7 @@ export class DSearchAPI<ChainId = Web3Helper.ChainIdAll, SchemaType = Web3Helper
     }
 
     private async searchRSS3Handle(handle: string): Promise<Array<DomainResult<ChainId>>> {
-        const profiles = await this.RSS3.getProfiles(handle)
+        const profiles = await RSS3.getProfiles(handle)
         return profiles
             .filter((x) => x.handle === handle)
             .map((profile) => {
@@ -160,7 +160,7 @@ export class DSearchAPI<ChainId = Web3Helper.ChainIdAll, SchemaType = Web3Helper
     }
 
     private async searchRSS3NameService(handle: string): Promise<Array<DomainResult<ChainId>>> {
-        const result = await this.RSS3.getNameService(handle)
+        const result = await RSS3.getNameService(handle)
         if (!result) return []
         return [
             {
@@ -180,54 +180,40 @@ export class DSearchAPI<ChainId = Web3Helper.ChainIdAll, SchemaType = Web3Helper
 
         const [domain, chainId] = await attemptUntil(
             [
-                () => this.ENS.reverse(address).then((x) => [x, ChainIdEVM.Mainnet]),
-                () => this.SpaceID.reverse(address).then((x) => [x, ChainIdEVM.BSC]),
+                () => ENS.reverse(address).then((x) => [x, ChainIdEVM.Mainnet]),
+                () => SpaceID.reverse(address).then((x) => [x, ChainIdEVM.BSC]),
+                () => ARBID.reverse(address).then((x) => [x, ChainIdEVM.Arbitrum]),
             ],
             ['', ChainIdEVM.Mainnet],
         )
 
-        if (isValidDomainEVM(domain)) {
-            return [
-                {
-                    type: SearchResultType.EOA,
-                    pluginID: NetworkPluginID.PLUGIN_EVM,
-                    chainId: chainId as ChainId,
-                    keyword: address,
-                    domain,
-                    address,
-                },
-            ]
-        }
-
-        const bindingProofList = await this.NextIDProof.queryProfilesByRelationService(address)
-
-        if (bindingProofList?.length > 0) {
-            return [
-                {
-                    type: SearchResultType.EOA,
-                    pluginID: NetworkPluginID.PLUGIN_EVM,
-                    chainId: chainId as ChainId,
-                    keyword: address,
-                    bindingProofList,
-                    address,
-                },
-            ]
-        }
-
-        return EMPTY_LIST
+        return [
+            {
+                type: SearchResultType.EOA,
+                pluginID: NetworkPluginID.PLUGIN_EVM,
+                chainId: chainId as ChainId,
+                keyword: address,
+                domain: isValidDomainEVM(domain) ? domain : undefined,
+                address,
+                web3bioProfiles: await Web3Bio.getProfilesBy(address),
+            },
+        ]
     }
 
     private async searchTokens() {
         const specificTokens = (
             await Promise.allSettled([
-                fetchJSON<Array<FungibleTokenResult<ChainId, SchemaType>>>(
+                fetchFromDSearch<Array<FungibleTokenResult<ChainId, SchemaType>>>(
                     urlcat(DSEARCH_BASE_URL, '/fungible-tokens/specific-list.json'),
+                    { mode: 'cors' },
                 ),
-                fetchJSON<Array<NonFungibleTokenResult<ChainId, SchemaType>>>(
+                fetchFromDSearch<Array<NonFungibleTokenResult<ChainId, SchemaType>>>(
                     urlcat(DSEARCH_BASE_URL, '/non-fungible-tokens/specific-list.json'),
+                    { mode: 'cors' },
                 ),
-                fetchJSON<Array<NonFungibleCollectionResult<ChainId, SchemaType>>>(
+                fetchFromDSearch<Array<NonFungibleCollectionResult<ChainId, SchemaType>>>(
                     urlcat(DSEARCH_BASE_URL, '/non-fungible-collections/specific-list.json'),
+                    { mode: 'cors' },
                 ),
             ])
         ).flatMap(
@@ -239,19 +225,14 @@ export class DSearchAPI<ChainId = Web3Helper.ChainIdAll, SchemaType = Web3Helper
                 >,
         )
 
-        const normalTokens = (
-            await Promise.allSettled([
-                this.NFTScanClient.get(),
-                this.CoinGeckoClient.get(),
-                this.CoinMarketCapClient.get(),
-            ])
-        ).flatMap(
-            (v) =>
-                (v.status === 'fulfilled' && v.value ? v.value : []) as Array<
+        const normalTokens = (await Promise.allSettled([this.NFTScanClient.get(), this.CoinGeckoClient.get()])).flatMap(
+            (v) => {
+                return (v.status === 'fulfilled' && v.value ? v.value : []) as Array<
                     | FungibleTokenResult<ChainId, SchemaType>
                     | NonFungibleTokenResult<ChainId, SchemaType>
                     | NonFungibleCollectionResult<ChainId, SchemaType>
-                >,
+                >
+            },
         )
 
         return {
@@ -264,30 +245,32 @@ export class DSearchAPI<ChainId = Web3Helper.ChainIdAll, SchemaType = Web3Helper
         const { specificTokens, normalTokens } = await this.searchTokens()
 
         const specificTokensFiltered = specificTokens
-            .filter(
-                (x) =>
+            .filter((x) => {
+                return (
                     isSameAddress(address, x.address) &&
                     (x.type === SearchResultType.FungibleToken ||
                         x.type === SearchResultType.NonFungibleToken ||
-                        x.type === SearchResultType.CollectionListByTwitterHandler),
-            )
+                        x.type === SearchResultType.CollectionListByTwitterHandle)
+                )
+            })
             .sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0))
 
         const normalTokensFiltered = normalTokens
-            .filter(
-                (x) =>
+            .filter((x) => {
+                return (
                     isSameAddress(address, x.address) &&
                     (x.type === SearchResultType.FungibleToken ||
                         x.type === SearchResultType.NonFungibleToken ||
-                        x.type === SearchResultType.CollectionListByTwitterHandler),
-            )
+                        x.type === SearchResultType.CollectionListByTwitterHandle)
+                )
+            })
             .sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0))
 
         if (specificTokensFiltered.length > 0) return [specificTokensFiltered[0]]
 
         if (normalTokensFiltered.length > 0) return [normalTokensFiltered[0]]
 
-        const coinInfo = await this.CoinGeckoTrending.getCoinInfoByAddress(address)
+        const coinInfo = await CoinGeckoTrending.getCoinInfoByAddress(address)
 
         if (coinInfo?.id) {
             return [
@@ -328,10 +311,12 @@ export class DSearchAPI<ChainId = Web3Helper.ChainIdAll, SchemaType = Web3Helper
         > = []
 
         if (name.length < 6) {
+            const lowerName = name.toLowerCase()
             result = tokens.filter(
                 (t) =>
-                    t.symbol?.toLowerCase() === name.toLowerCase() ||
-                    (name.length > 3 && t.name?.toLowerCase().startsWith(name.toLowerCase()) && t.rank && t.rank <= 20),
+                    t.symbol?.toLowerCase() === lowerName ||
+                    (name.length > 3 && t.name?.toLowerCase().startsWith(lowerName) && t.rank && t.rank <= 20) ||
+                    t.alias?.map((x) => x.value.toLowerCase()).includes(lowerName),
             )
         }
 
@@ -352,23 +337,20 @@ export class DSearchAPI<ChainId = Web3Helper.ChainIdAll, SchemaType = Web3Helper
                                 | NonFungibleTokenResult<ChainId, SchemaType>
                                 | NonFungibleCollectionResult<ChainId, SchemaType>
                             >(name, filtered)
-                            ?.map((x) => ({ ...x, keyword: name }))
-                        if (items?.length) result = [...result, ...items]
+                            .map((x) => ({ ...x, keyword: name }))
+                        if (items.length) result = [...result, ...items]
                     }
                 }
             }
         }
         return result.sort((a, b) => {
             if (
-                (a.rank &&
-                    a.rank <= 200 &&
-                    a.type === SearchResultType.FungibleToken &&
-                    b.type !== SearchResultType.FungibleToken) ||
-                (a.source === SourceType.CoinGecko && b.source === SourceType.CoinMarketCap)
+                a.rank &&
+                a.rank <= 200 &&
+                a.type === SearchResultType.FungibleToken &&
+                b.type !== SearchResultType.FungibleToken
             )
                 return -1
-
-            if (a.source === SourceType.CoinMarketCap && b.source === SourceType.CoinGecko) return 1
 
             return (a.rank ?? 0) - (b.rank ?? 0)
         })
@@ -376,7 +358,6 @@ export class DSearchAPI<ChainId = Web3Helper.ChainIdAll, SchemaType = Web3Helper
 
     private async searchTokenByName(name: string): Promise<Array<SearchResult<ChainId, SchemaType>>> {
         const { specificTokens, normalTokens } = await this.searchTokens()
-
         const specificResult_ = await this.searchTokenByHandler(
             specificTokens.map((x) => ({ ...x, alias: x.alias?.filter((x) => !x.isPin) })),
             name,
@@ -395,17 +376,11 @@ export class DSearchAPI<ChainId = Web3Helper.ChainIdAll, SchemaType = Web3Helper
         return uniqWith(specificResult.concat(normalResult), (a, b) => a.id === b.id)
     }
 
-    private async searchCollectionListByTwitterHandler(
-        twitterHandler: string,
+    private async searchCollectionListByTwitterHandle(
+        twitterHandle: string,
     ): Promise<Array<SearchResult<ChainId, SchemaType>>> {
         const collections = uniqWith(
-            (
-                await Promise.allSettled([
-                    this.CoinGeckoClient.get(),
-                    this.CoinMarketCapClient.get(),
-                    this.NFTScanCollectionClient.get(),
-                ])
-            )
+            (await Promise.allSettled([this.CoinGeckoClient.get(), this.NFTScanCollectionClient.get()]))
                 .flatMap(
                     (v) =>
                         (v.status === 'fulfilled' && v.value ? v.value : []) as Array<
@@ -413,23 +388,19 @@ export class DSearchAPI<ChainId = Web3Helper.ChainIdAll, SchemaType = Web3Helper
                         >,
                 )
                 .filter((x) => {
-                    const resultTwitterHandler =
+                    const resultTwitterHandle =
                         (x as NonFungibleCollectionResult<ChainId, SchemaType>).collection?.socialLinks?.twitter ||
                         (x as FungibleTokenResult<ChainId, SchemaType>).socialLinks?.twitter
+                    if (!resultTwitterHandle) return false
+                    const handle = twitterHandle.toLowerCase()
                     return (
-                        resultTwitterHandler &&
-                        [twitterHandler.toLowerCase(), `https://twitter.com/${twitterHandler.toLowerCase()}`].includes(
-                            resultTwitterHandler.toLowerCase(),
+                        [handle, `https://twitter.com/${handle}`, `https://x.com/${handle}`].includes(
+                            resultTwitterHandle.toLowerCase(),
                         ) &&
-                        ((x.rank && x.rank <= 200) || x.id === 'mask-network')
+                        ((x.rank && x.rank <= 500) || x.id === 'mask-network')
                     )
                 })
-                .sort((a, b) => {
-                    if (a.source === SourceType.CoinGecko && b.source === SourceType.CoinMarketCap) return -1
-                    if (a.source === SourceType.CoinMarketCap && b.source === SourceType.CoinGecko) return 1
-
-                    return (a.rank ?? 0) - (b.rank ?? 0)
-                }),
+                .sort((a, b) => (a.rank || 0) - (b.rank || 0)),
             (a, b) => a.id === b.id,
         )
 
@@ -444,21 +415,19 @@ export class DSearchAPI<ChainId = Web3Helper.ChainIdAll, SchemaType = Web3Helper
      * @returns
      */
     async search<T extends SearchResult<ChainId, SchemaType> = SearchResult<ChainId, SchemaType>>(
-        keyword: string,
+        keyword_: string,
         type?: SearchResultType,
     ): Promise<T[]> {
+        const keyword = keyword_.toLowerCase()
         // filter out 'domain/xxx' or string ends with punctuation marks like 'eth.'
-        if (
-            keyword.replace(/([#$])?([\s\w+.])+/, '').length > 0 ||
-            !new RegExp(/(\w)+/).test(keyword[keyword.length - 1])
-        )
+        if (keyword.replace(/([#$])?([\s\w+.])+/, '').length > 0 || !new RegExp(/(\w)+/).test(keyword.at(-1)!))
             return EMPTY_LIST
         // #MASK or $MASK or MASK
         const [_, name = ''] = keyword.match(/(\w+)/) ?? []
 
         // BoredApeYC or CryptoPunks nft twitter project
-        if (type === SearchResultType.CollectionListByTwitterHandler)
-            return this.searchCollectionListByTwitterHandler(keyword) as Promise<T[]>
+        if (type === SearchResultType.CollectionListByTwitterHandle)
+            return this.searchCollectionListByTwitterHandle(keyword) as Promise<T[]>
 
         // token:MASK
         const { word, field } = this.parseKeyword(keyword)
@@ -467,20 +436,24 @@ export class DSearchAPI<ChainId = Web3Helper.ChainIdAll, SchemaType = Web3Helper
         // vitalik.lens, vitalik.bit, etc. including ENS BNB
         // Can't get .bit domain via RSS3 profile API.
         if (isValidHandle(keyword) && !keyword.endsWith('.bit')) {
-            return this.searchRSS3Handle(keyword) as Promise<T[]>
+            if (keyword.endsWith('.eth')) Telemetry.captureEvent(EventType.Access, EventID.EntryTimelineDsearchEns)
+            else Telemetry.captureEvent(EventType.Access, EventID.EntryTimelineDsearchName)
+            const domains = (await this.searchRSS3Handle(keyword)) as T[]
+            if (domains.length) return domains
         }
         if (keyword.endsWith('.bit')) {
+            Telemetry.captureEvent(EventType.Access, EventID.EntryTimelineDsearchName)
             return this.searchRSS3NameService(keyword) as Promise<T[]>
         }
-
         // vitalik.eth
         if (isValidDomain(keyword)) return this.searchDomain(keyword) as Promise<T[]>
 
         // 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
-        if (isValidAddress?.(keyword) && !isZeroAddress?.(keyword)) {
+        if (isValidAddress(keyword) && !isZeroAddress(keyword)) {
             const tokenList = await this.searchTokenByAddress(keyword)
             if (tokenList.length) return tokenList as T[]
 
+            Telemetry.captureEvent(EventType.Access, EventID.EntryTimelineDsearchAddress)
             const addressList = await this.searchAddress(keyword)
             if (addressList.length) return addressList as T[]
         }
@@ -489,3 +462,4 @@ export class DSearchAPI<ChainId = Web3Helper.ChainIdAll, SchemaType = Web3Helper
         return EMPTY_LIST
     }
 }
+export const DSearch = new DSearchAPI()

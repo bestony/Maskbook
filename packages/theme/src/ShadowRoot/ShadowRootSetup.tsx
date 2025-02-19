@@ -1,5 +1,5 @@
-import { ALL_EVENTS, ObservableMap } from '@masknet/shared-base'
-import { StrictMode, useEffect, useState } from 'react'
+import { ObservableMap } from '@masknet/shared-base'
+import { StrictMode, useSyncExternalStore, type JSX } from 'react'
 import { createRoot } from 'react-dom/client'
 import { PreventShadowRootEventPropagationListContext } from './Contexts.js'
 
@@ -13,7 +13,7 @@ let globalContainer: HTMLElement
  * This container is prepared for all the Modals.
  */
 let portalContainer: ShadowRoot
-export type WrapJSX = ((jsx: React.ReactNode) => JSX.Element) | undefined
+export type WrapJSX = ((jsx: React.ReactNode) => React.ReactNode) | undefined
 /** @internal */
 export const shadowEnvironmentMountingRoots = new ObservableMap<any, JSX.Element>()
 
@@ -35,17 +35,14 @@ export function setupReactShadowRootEnvironment(
     )
     return portalContainer
 }
+const subscribe = (f: () => void) =>
+    shadowEnvironmentMountingRoots.event.on(shadowEnvironmentMountingRoots.ALL_EVENTS, f)
 function MountingPoint(props: { wrapJSX: WrapJSX; preventPropagationList: Array<keyof HTMLElementEventMap> }) {
-    const [children, setChildren] = useState<JSX.Element[]>([])
-    useEffect(() => {
-        shadowEnvironmentMountingRoots.event.on(ALL_EVENTS, () => {
-            setChildren(Array.from(shadowEnvironmentMountingRoots.values()))
-        })
-    }, [])
+    const children = useSyncExternalStore(subscribe, () => shadowEnvironmentMountingRoots.asValues)
     return (
-        <PreventShadowRootEventPropagationListContext.Provider value={props.preventPropagationList}>
+        <PreventShadowRootEventPropagationListContext value={props.preventPropagationList}>
             {props.wrapJSX ? props.wrapJSX(children) : children}
-        </PreventShadowRootEventPropagationListContext.Provider>
+        </PreventShadowRootEventPropagationListContext>
     )
 }
 

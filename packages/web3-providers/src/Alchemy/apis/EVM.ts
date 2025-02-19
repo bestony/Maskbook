@@ -1,14 +1,8 @@
 import urlcat from 'urlcat'
 import { first } from 'lodash-es'
 import { createIndicator, createNextIndicator, createPageable } from '@masknet/shared-base'
-import {
-    type HubOptions,
-    type NonFungibleAsset,
-    resolveResourceURL,
-    SourceType,
-    TokenType,
-} from '@masknet/web3-shared-base'
-import { ChainId, ChainId as ChainId_EVM, SchemaType as SchemaType_EVM } from '@masknet/web3-shared-evm'
+import { type NonFungibleAsset, resolveResourceURL, SourceType, TokenType } from '@masknet/web3-shared-base'
+import { ChainId, SchemaType, resolveImageURL } from '@masknet/web3-shared-evm'
 import { Alchemy_EVM_NetworkMap } from '../constants.js'
 import type {
     AlchemyNFT_EVM,
@@ -18,11 +12,12 @@ import type {
     AlchemyResponse_EVM_Owners,
 } from '../types.js'
 import { formatAlchemyTokenId } from '../helpers.js'
-import type { NonFungibleTokenAPI } from '../../entry-types.js'
-import { fetchJSON, getAssetFullName } from '../../entry-helpers.js'
+import { fetchJSON } from '../../helpers/fetchJSON.js'
+import { getAssetFullName } from '../../helpers/getAssetFullName.js'
+import type { BaseHubOptions, NonFungibleTokenAPI } from '../../entry-types.js'
 
 function createNonFungibleTokenLink(chainId: ChainId, address: string, tokenId: string) {
-    if (chainId === ChainId.Matic) {
+    if (chainId === ChainId.Polygon) {
         return urlcat('https://opensea.io/assets/matic/:address/:tokenId', {
             address,
             tokenId,
@@ -34,39 +29,37 @@ function createNonFungibleTokenLink(chainId: ChainId, address: string, tokenId: 
     })
 }
 
-function createNonFungibleToken(
-    chainId: ChainId_EVM,
-    asset: AlchemyNFT_EVM,
-): NonFungibleAsset<ChainId_EVM, SchemaType_EVM> {
+function createNonFungibleToken(chainId: ChainId, asset: AlchemyNFT_EVM): NonFungibleAsset<ChainId, SchemaType> {
     const contractAddress = asset.contract.address
     const tokenId = formatAlchemyTokenId(asset.id.tokenId)
     const imageURL =
         asset.metadata.image || asset.metadata.image_url || asset.media?.[0]?.gateway || asset.metadata.animation_url
     const mediaURL =
         asset.media?.[0]?.gateway || asset.media?.[0]?.raw || asset.metadata.image_url || asset.metadata.image
+    const name = getAssetFullName(
+        asset.contract.address,
+        asset.metadata.name || asset.title,
+        asset.metadata.name || asset.title,
+        tokenId,
+    )
     return {
         id: `${contractAddress}_${tokenId}`,
         chainId,
         type: TokenType.NonFungible,
-        schema: asset.id?.tokenMetadata?.tokenType === 'ERC721' ? SchemaType_EVM.ERC721 : SchemaType_EVM.ERC1155,
+        schema: asset.id?.tokenMetadata?.tokenType === 'ERC721' ? SchemaType.ERC721 : SchemaType.ERC1155,
         tokenId,
         address: contractAddress,
         link: createNonFungibleTokenLink(chainId, contractAddress, tokenId),
         metadata: {
             chainId,
-            name: getAssetFullName(
-                asset.contract.address,
-                asset.metadata.name || asset.title,
-                asset.metadata.name || asset.title,
-                tokenId,
-            ),
+            name,
             description: asset.metadata.description || asset.description,
-            imageURL: resolveResourceURL(decodeURIComponent(imageURL)),
+            imageURL: resolveImageURL(resolveResourceURL(decodeURIComponent(imageURL)), name, contractAddress),
             mediaURL: resolveResourceURL(decodeURIComponent(mediaURL)),
         },
         contract: {
             chainId,
-            schema: asset.id?.tokenMetadata.tokenType === 'ERC721' ? SchemaType_EVM.ERC721 : SchemaType_EVM.ERC1155,
+            schema: asset.id?.tokenMetadata.tokenType === 'ERC721' ? SchemaType.ERC721 : SchemaType.ERC1155,
             address: contractAddress,
             name: asset.metadata.name || asset.title,
             symbol: '',
@@ -83,40 +76,40 @@ function createNonFungibleToken(
 }
 
 function createNonFungibleAsset(
-    chainId: ChainId_EVM,
+    chainId: ChainId,
     metaDataResponse: AlchemyResponse_EVM_Metadata,
     contractMetadataResponse?: AlchemyResponse_EVM_Contact_Metadata,
     ownersResponse?: AlchemyResponse_EVM_Owners,
-): NonFungibleAsset<ChainId_EVM, SchemaType_EVM> {
+): NonFungibleAsset<ChainId, SchemaType> {
     const tokenId = formatAlchemyTokenId(metaDataResponse.id.tokenId)
     const contractName = contractMetadataResponse?.contractMetadata.name || metaDataResponse.metadata?.name || ''
-
+    const name = getAssetFullName(metaDataResponse.contract?.address, contractName, metaDataResponse.title, tokenId)
     return {
         id: `${metaDataResponse.contract.address}_${tokenId}`,
         chainId,
         type: TokenType.NonFungible,
-        schema:
-            metaDataResponse.id?.tokenMetadata?.tokenType === 'ERC721' ? SchemaType_EVM.ERC721 : SchemaType_EVM.ERC1155,
+        schema: metaDataResponse.id?.tokenMetadata?.tokenType === 'ERC721' ? SchemaType.ERC721 : SchemaType.ERC1155,
         tokenId,
         address: metaDataResponse.contract?.address,
         metadata: {
             chainId,
-            name: getAssetFullName(metaDataResponse.contract?.address, contractName, metaDataResponse.title, tokenId),
+            name,
             symbol: contractMetadataResponse?.contractMetadata?.symbol ?? '',
             description: metaDataResponse.description,
-            imageURL: decodeURIComponent(
-                metaDataResponse.metadata?.image ||
-                    metaDataResponse.media?.[0]?.gateway ||
-                    metaDataResponse.media?.[0]?.raw,
+            imageURL: resolveImageURL(
+                decodeURIComponent(
+                    metaDataResponse.metadata?.image ||
+                        metaDataResponse.media?.[0]?.gateway ||
+                        metaDataResponse.media?.[0]?.raw,
+                ),
+                name,
+                metaDataResponse.contract?.address,
             ),
             mediaURL: decodeURIComponent(metaDataResponse.media?.[0]?.gateway),
         },
         contract: {
             chainId,
-            schema:
-                metaDataResponse.id?.tokenMetadata?.tokenType === 'ERC721'
-                    ? SchemaType_EVM.ERC721
-                    : SchemaType_EVM.ERC1155,
+            schema: metaDataResponse.id?.tokenMetadata?.tokenType === 'ERC721' ? SchemaType.ERC721 : SchemaType.ERC1155,
             address: metaDataResponse.contract?.address,
             name: contractName,
             symbol: contractMetadataResponse?.contractMetadata?.symbol ?? '',
@@ -139,8 +132,8 @@ function createNonFungibleAsset(
     }
 }
 
-export class AlchemyEVM_API implements NonFungibleTokenAPI.Provider<ChainId_EVM, SchemaType_EVM, string> {
-    async getAsset(address: string, tokenId: string, { chainId = ChainId_EVM.Mainnet }: HubOptions<ChainId_EVM> = {}) {
+class AlchemyEVM_API implements NonFungibleTokenAPI.Provider<ChainId, SchemaType, string> {
+    async getAsset(address: string, tokenId: string, { chainId = ChainId.Mainnet }: BaseHubOptions<ChainId> = {}) {
         const chainInfo = Alchemy_EVM_NetworkMap.chains.find((chain) => chain.chainId === chainId)
         if (!chainInfo) return
 
@@ -173,11 +166,11 @@ export class AlchemyEVM_API implements NonFungibleTokenAPI.Provider<ChainId_EVM,
             AlchemyResponse_EVM_Owners | undefined,
         ]
 
-        if (!metadataResponse) return
+        if (!metadataResponse || metadataResponse.error || !ownersResponse) return
         return createNonFungibleAsset(chainId, metadataResponse, contractMetadataResponse, ownersResponse)
     }
 
-    async getAssets(from: string, { chainId = ChainId_EVM.Mainnet, indicator }: HubOptions<ChainId_EVM> = {}) {
+    async getAssets(from: string, { chainId = ChainId.Mainnet, indicator }: BaseHubOptions<ChainId> = {}) {
         const chainInfo = Alchemy_EVM_NetworkMap.chains.find((chain) => chain.chainId === chainId)
         if (!chainInfo) return createPageable([], createIndicator(indicator, ''))
 
@@ -196,3 +189,4 @@ export class AlchemyEVM_API implements NonFungibleTokenAPI.Provider<ChainId_EVM,
         )
     }
 }
+export const AlchemyEVM = new AlchemyEVM_API()

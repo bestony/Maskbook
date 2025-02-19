@@ -1,8 +1,8 @@
 import type { TypedMessage } from '@masknet/typed-message'
 import { type Result, Ok, Err, Some, type Option, None } from 'ts-results-es'
-import type { ReactElement, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import z_schema from 'z-schema'
-import draft, { enableMapSet, type Draft } from 'immer'
+import { produce, enableMapSet, type Draft } from 'immer'
 
 const metadataSchemaStore = new Map<string, object>()
 export function getKnownMetadataKeys() {
@@ -53,8 +53,8 @@ export function readTypedMessageMetadataUntyped<T>(
     if (!jsonSchema) console.warn('You should add a JSON Schema to verify the metadata in the TypedMessage')
     else {
         const match = isDataMatchJSONSchema(data, jsonSchema)
-        if (match.err) {
-            console.warn('The problematic metadata is dropped', data, 'errors:', match.val)
+        if (match.isErr()) {
+            console.warn('The problematic metadata is dropped', data, 'errors:', match.error)
             return Err.EMPTY
         }
     }
@@ -72,9 +72,9 @@ export function isDataMatchJSONSchema(data: any, jsonSchema: object) {
  * @param metadataReader A metadata reader (can be return value of createTypedMessageMetadataReader)
  */
 export function createRenderWithMetadata<T>(metadataReader: (meta: TypedMessage['meta']) => Result<T, void>) {
-    return (metadata: TypedMessage['meta'], render: (data: T) => ReactElement | null): ReactElement | null => {
+    return (metadata: TypedMessage['meta'], render: (data: T) => ReactNode | null): ReactNode | null => {
         const message = metadataReader(metadata)
-        if (message.ok) return render(message.val)
+        if (message.isOk()) return render(message.value)
         return null
     }
 }
@@ -88,7 +88,7 @@ export function editTypedMessageMeta<T extends TypedMessage>(
         enableMapSet()
         immer_setup = true
     }
-    return draft(typedMessage, (e) => {
+    return produce(typedMessage, (e) => {
         if (!e.meta) e.meta = new Map()
         edit(e.meta)
         if (e.meta.size === 0) e.meta = undefined
@@ -109,6 +109,6 @@ export function renderWithMetadataUntyped(
     jsonSchema?: object,
 ): ReactNode | null {
     const message = readTypedMessageMetadataUntyped(metadata, key, jsonSchema)
-    if (message.ok) return render(message.val)
+    if (message.isOk()) return render(message.value)
     return null
 }

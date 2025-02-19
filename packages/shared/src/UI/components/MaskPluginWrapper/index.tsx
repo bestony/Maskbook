@@ -1,25 +1,25 @@
-import { Typography, SnackbarContent, Link } from '@mui/material'
+import { Suspense, type ReactNode, useMemo, useImperativeHandle, useState, type JSX } from 'react'
+import { Typography, Link } from '@mui/material'
 import { makeStyles, MaskColorVar, MaskLightTheme } from '@masknet/theme'
-import { Suspense, type ReactNode, useMemo, forwardRef, useImperativeHandle, useState } from 'react'
-import { useSharedI18N } from '@masknet/shared'
 import { Box } from '@mui/system'
 import {
-    usePluginI18NField,
-    PluginI18NFieldRender,
-    type PluginWrapperComponent,
+    usePluginTransField,
+    PluginTransFieldRender,
     type Plugin,
     type PluginWrapperMethods,
+    type PluginWrapperComponentProps,
 } from '@masknet/plugin-infra/content-script'
 import { Icons } from '@masknet/icons'
+import { Trans } from '@lingui/react/macro'
 
-interface PluginWrapperProps extends React.PropsWithChildren<{}> {
+interface PluginWrapperProps extends React.PropsWithChildren {
     open?: boolean
     title: JSX.Element | string
     width?: number
     content?: ReactNode
     action?: ReactNode
     publisher?: JSX.Element
-    wrapperProps?: Plugin.SNSAdaptor.PluginWrapperProps
+    wrapperProps?: Plugin.SiteAdaptor.PluginWrapperProps
     publisherLink?: string
     lackHostPermission?: boolean
     ID: string
@@ -33,13 +33,13 @@ const useStyles = makeStyles<{
     return {
         card: {
             background:
-                props?.backgroundGradient ??
+                props.backgroundGradient ??
                 'linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.8) 100%), linear-gradient(90deg, rgba(28, 104, 243, 0.2) 0%, rgba(45, 41, 253, 0.2) 100%), #FFFFFF;',
-            margin: props?.margin ?? theme.spacing(2, 0),
+            margin: props.margin ?? theme.spacing(2, 0),
             width: '100%',
             boxSizing: 'border-box',
             cursor: 'default',
-            borderRadius: props?.borderRadius ?? 15,
+            borderRadius: props.borderRadius ?? 15,
             overflow: 'hidden',
         },
         header: {
@@ -84,17 +84,16 @@ const useStyles = makeStyles<{
 })
 
 export function MaskPostExtraInfoWrapper(props: PluginWrapperProps) {
-    const { open, title, children, action, publisher, publisherLink, content, wrapperProps, ID } = props
+    const { open, title, children, action, publisher, publisherLink, content, wrapperProps } = props
     const { classes } = useStyles({
         backgroundGradient: wrapperProps?.backgroundGradient,
         borderRadius: wrapperProps?.borderRadius,
         margin: wrapperProps?.margin,
     })
-    const t = useSharedI18N()
 
     const publisherInfo = useMemo(() => {
         if (!publisher) return
-        const main = (
+        const publisherNode = (
             <Typography
                 variant="body1"
                 fontSize={14}
@@ -106,11 +105,13 @@ export function MaskPostExtraInfoWrapper(props: PluginWrapperProps) {
         )
         return (
             <Box className={classes.provider}>
-                <Typography variant="body1" className={classes.providerBy}>
-                    {t.powered_by()}
-                </Typography>
-                {main}
-                {publisherLink ? (
+                <Trans>
+                    <Typography variant="body1" className={classes.providerBy}>
+                        Powered by{' '}
+                    </Typography>
+                    {publisherNode}
+                </Trans>
+                {publisherLink ?
                     <Link href={publisherLink} underline="none" target="_blank" rel="noopener">
                         <Icons.Provider
                             size={18}
@@ -118,7 +119,7 @@ export function MaskPostExtraInfoWrapper(props: PluginWrapperProps) {
                             color={MaskLightTheme.palette.maskColor.main}
                         />
                     </Link>
-                ) : null}
+                :   null}
             </Box>
         )
     }, [publisher, publisherLink])
@@ -139,55 +140,55 @@ export function MaskPostExtraInfoWrapper(props: PluginWrapperProps) {
                     fontWeight={700}
                     component="div"
                     color={MaskColorVar.textPluginColor}>
-                    {wrapperProps?.title ?? title ?? t.plugin_default_title()}
+                    {wrapperProps?.title ?? title ?? <Trans>Default</Trans>}
                 </Typography>
                 <div className={classes.publish}>{publisherInfo}</div>
             </div>
-            {action ? (
+            {action ?
                 <>
                     <Typography component="div" variant="body1" color="#FF3545" sx={{ padding: 1 }} textAlign="center">
                         {content}
                     </Typography>
                     <div className={classes.action}>{action}</div>
                 </>
-            ) : null}
-            {children ? <div className={classes.body}>{children}</div> : null}
+            :   null}
+            {children ?
+                <div className={classes.body}>{children}</div>
+            :   null}
         </div>
     )
 
-    return <Suspense fallback={<SnackbarContent message="Mask is loading this content..." />} children={inner} />
+    return <Suspense children={inner} />
 }
 
-export const MaskPostExtraPluginWrapper: PluginWrapperComponent<Plugin.SNSAdaptor.Definition> = forwardRef(
-    (props, ref) => {
-        const { ID, name, publisher, wrapperProps } = props.definition
-        const t = usePluginI18NField()
-        const [width, setWidth] = useState<undefined | number>(undefined)
-        const [open, setOpen] = useState<boolean>(false)
-        const [title, setTitle] = useState<string | undefined>(undefined)
+export function MaskPostExtraPluginWrapper(props: PluginWrapperComponentProps<Plugin.SiteAdaptor.Definition>) {
+    const { ID, name, publisher, wrapperProps } = props.definition
+    const t = usePluginTransField()
+    const [width, setWidth] = useState<undefined | number>(undefined)
+    const [open, setOpen] = useState<boolean>(false)
+    const [title, setTitle] = useState<string | undefined>(undefined)
 
-        const refItem = useMemo((): PluginWrapperMethods => {
-            return {
-                setWidth,
-                setWrap: setOpen,
-                setWrapperName: setTitle,
-            }
-        }, [])
+    const refItem = useMemo((): PluginWrapperMethods => {
+        return {
+            setWidth,
+            setWrap: setOpen,
+            setWrapperName: setTitle,
+        }
+    }, [])
 
-        useImperativeHandle(ref, () => refItem, [refItem])
+    useImperativeHandle(props.ref, () => refItem, [refItem])
 
-        return (
-            <MaskPostExtraInfoWrapper
-                ID={props.definition.ID}
-                wrapperProps={wrapperProps}
-                open={open}
-                title={title || t(ID, name)}
-                width={width}
-                publisher={publisher ? <PluginI18NFieldRender pluginID={ID} field={publisher.name} /> : undefined}
-                publisherLink={publisher?.link}
-                children={props.children}
-                lackHostPermission={props.lackHostPermission}
-            />
-        )
-    },
-)
+    return (
+        <MaskPostExtraInfoWrapper
+            ID={props.definition.ID}
+            wrapperProps={wrapperProps}
+            open={open}
+            title={title || t(ID, name)}
+            width={width}
+            publisher={publisher ? <PluginTransFieldRender pluginID={ID} field={publisher.name} /> : undefined}
+            publisherLink={publisher?.link}
+            children={props.children}
+            lackHostPermission={props.lackHostPermission}
+        />
+    )
+}

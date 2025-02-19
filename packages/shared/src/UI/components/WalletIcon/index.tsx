@@ -1,5 +1,6 @@
 import { makeStyles } from '@masknet/theme'
 import { ImageIcon } from '../ImageIcon/index.js'
+import type { HTMLProps } from 'react'
 
 interface StyleProps {
     size: number
@@ -25,20 +26,20 @@ const useStyles = makeStyles<StyleProps>()((theme, props) => ({
     },
 }))
 
-interface WalletIconProps extends withClasses<'root' | 'mainIcon'> {
+interface WalletIconProps extends withClasses<'root' | 'mainIcon'>, HTMLProps<HTMLDivElement> {
     size?: number
     badgeSize?: number
-    mainIcon?: URL
-    badgeIcon?: URL
+    mainIcon?: string
+    badgeIcon?: string
     badgeIconBorderColor?: string
     iconFilterColor?: string
 }
 
-export const WalletIcon = (props: WalletIconProps) => {
-    const { size = 24, badgeSize = 14, mainIcon, badgeIcon, badgeIconBorderColor, iconFilterColor } = props
-    const { classes } = useStyles(
+export function WalletIcon(props: WalletIconProps) {
+    const { size = 24, badgeSize = 14, mainIcon, badgeIcon, badgeIconBorderColor, iconFilterColor, ...rest } = props
+    const { classes, cx } = useStyles(
         {
-            size: badgeSize > size ? badgeSize : size,
+            size: Math.max(badgeSize, size),
             badgeIconBorderColor,
         },
         { props: { classes: props.classes } },
@@ -46,30 +47,19 @@ export const WalletIcon = (props: WalletIconProps) => {
 
     return (
         <div
-            className={classes.root}
+            {...rest}
+            className={cx(classes.root, rest.className)}
             style={{
                 height: size,
                 width: size,
+                ...rest.style,
             }}>
-            {mainIcon ? (
-                <ImageIcon
-                    classes={{
-                        icon: classes.mainIcon,
-                    }}
-                    size={size}
-                    icon={mainIcon}
-                    iconFilterColor={iconFilterColor}
-                />
-            ) : null}
-            {badgeIcon ? (
-                <ImageIcon
-                    classes={{
-                        icon: classes.badgeIcon,
-                    }}
-                    size={badgeSize}
-                    icon={badgeIcon}
-                />
-            ) : null}
+            {mainIcon ?
+                <ImageIcon className={classes.mainIcon} size={size} icon={mainIcon} iconFilterColor={iconFilterColor} />
+            :   null}
+            {badgeIcon ?
+                <ImageIcon className={classes.badgeIcon} size={badgeSize} icon={badgeIcon} />
+            :   null}
         </div>
     )
 }

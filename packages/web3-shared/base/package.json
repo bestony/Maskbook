@@ -1,6 +1,7 @@
 {
   "name": "@masknet/web3-shared-base",
   "private": true,
+  "sideEffects": false,
   "type": "module",
   "exports": {
     ".": {
@@ -11,18 +12,16 @@
   },
   "types": "./dist/index.d.ts",
   "dependencies": {
-    "use-subscription": "^1.8.0",
     "@masknet/public-api": "workspace:^",
     "@masknet/shared-base": "workspace:^",
     "@servie/events": "^3.0.0",
-    "bignumber.js": "9.1.0",
-    "date-fns": "^2.29.3",
-    "react-use": "^17.4.0",
-    "urlcat": "^2.0.4",
-    "web3-core-helpers": "1.8.0"
+    "bignumber.js": "9.1.2",
+    "date-fns": "^3.6.0",
+    "millify": "^6.1.0",
+    "urlcat": "^3.1.0",
+    "web3-core-helpers": "1.10.2"
   },
   "devDependencies": {
-    "@types/use-subscription": "^1.0.0",
-    "mock-socket": "^9.2.1"
+    "@types/use-subscription": "^1.0.2"
   }
 }

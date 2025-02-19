@@ -2,7 +2,7 @@ import type { EventBasedChannel } from 'async-call-rpc'
 import type { PluginRuntime } from './runtime.js'
 import { combineAbortSignal } from '@masknet/kit'
 
-export interface PluginListItem {
+interface PluginListItem {
     normal?: boolean
     local?: boolean
     locales?: Array<{ url: string; language: string }>
@@ -20,7 +20,10 @@ export interface BasicHostInstance {
     runtime: PluginRuntime
 }
 
-export abstract class PluginRunner<HostHooks extends BasicHostHooks, HostPluginInstance extends BasicHostInstance> {
+export abstract class SandboxedPluginHost<
+    HostHooks extends BasicHostHooks,
+    HostPluginInstance extends BasicHostInstance,
+> {
     constructor(
         protected readonly hooks: HostHooks,
         protected readonly allowLocalOverrides: boolean,

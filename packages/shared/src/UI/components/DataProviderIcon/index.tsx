@@ -13,11 +13,9 @@ export function DataProviderIcon(props: DataProviderIconProps) {
             return <Icons.NFTScan size={size} />
         case SourceType.CoinGecko:
             return <Icons.CoinGecko size={size} />
-        case SourceType.CoinMarketCap:
-            return <Icons.CoinMarketCap size={size} />
         case SourceType.UniswapInfo:
             return <Icons.Uniswap size={size} />
         default:
-            return <></>
+            return null
     }
 }

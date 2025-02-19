@@ -1,10 +1,10 @@
 import { useCallback, useMemo } from 'react'
 import { useAsyncFn } from 'react-use'
 import { NetworkPluginID } from '@masknet/shared-base'
+import { EVMWeb3 } from '@masknet/web3-providers'
 import { isLessThan, toFixed, isZero } from '@masknet/web3-shared-base'
-import type { ChainId } from '@masknet/web3-shared-evm'
-import { useChainContext, useWeb3Connection, useFungibleTokenBalance } from '@masknet/web3-hooks-base'
-import { useERC20TokenContract } from './useERC20TokenContract.js'
+import { isNativeTokenAddress, type ChainId } from '@masknet/web3-shared-evm'
+import { useChainContext, useFungibleTokenBalance } from '@masknet/web3-hooks-base'
 import { useERC20TokenAllowance } from './useERC20TokenAllowance.js'
 
 const MaxUint256 = toFixed('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff')
@@ -21,26 +21,25 @@ export enum ApproveStateType {
 export function useERC20TokenApproveCallback(
     address: string,
     amount: string,
-    spender: string,
+    spender?: string,
     callback?: () => void,
     tokenChainId?: ChainId,
 ) {
+    const isNativeToken = isNativeTokenAddress(address)
     const { account, chainId } = useChainContext<NetworkPluginID.PLUGIN_EVM>()
-    const connection = useWeb3Connection(NetworkPluginID.PLUGIN_EVM, { chainId: tokenChainId })
-    const erc20Contract = useERC20TokenContract(tokenChainId, address)
 
     // read the approved information from the chain
     const {
-        value: balance = '0',
-        loading: loadingBalance,
+        data: balance = '0',
+        isPending: loadingBalance,
         error: errorBalance,
-        retry: revalidateBalance,
+        refetch: revalidateBalance,
     } = useFungibleTokenBalance(NetworkPluginID.PLUGIN_EVM, address, { chainId: tokenChainId })
     const {
-        value: allowance = '0',
-        loading: loadingAllowance,
+        data: allowance = '0',
+        isPending: loadingAllowance,
         error: errorAllowance,
-        retry: revalidateAllowance,
+        refetch: revalidateAllowance,
     } = useERC20TokenAllowance(address, spender, { chainId: tokenChainId })
 
     // the computed approve state
@@ -48,14 +47,14 @@ export function useERC20TokenApproveCallback(
         if (!amount || !spender) return ApproveStateType.UNKNOWN
         if (loadingBalance || loadingAllowance) return ApproveStateType.UPDATING
         if (errorBalance || errorAllowance) return ApproveStateType.FAILED
-        return isLessThan(allowance, amount) || (allowance === amount && isZero(amount))
-            ? ApproveStateType.NOT_APPROVED
-            : ApproveStateType.APPROVED
+        return isLessThan(allowance, amount) || (allowance === amount && isZero(amount)) ?
+                ApproveStateType.NOT_APPROVED
+            :   ApproveStateType.APPROVED
     }, [amount, spender, balance, allowance, errorBalance, errorAllowance, loadingAllowance, loadingBalance])
 
     const [state, approveCallback] = useAsyncFn(
         async (useExact = false, isRevoke = false) => {
-            if (approveStateType === ApproveStateType.UNKNOWN || !amount || !spender || !erc20Contract || !connection) {
+            if (approveStateType === ApproveStateType.UNKNOWN || !amount || !spender) {
                 return
             }
             // error: failed to approve token
@@ -64,14 +63,15 @@ export function useERC20TokenApproveCallback(
             }
 
             if (tokenChainId !== chainId) {
-                await connection?.switchChain?.(tokenChainId ?? chainId)
+                await EVMWeb3.switchChain?.(tokenChainId ?? chainId)
             }
 
-            const hash = await connection?.approveFungibleToken(address, spender, useExact ? amount : MaxUint256, {
+            const hash = await EVMWeb3.approveFungibleToken(address, spender, useExact ? amount : MaxUint256, {
                 chainId: tokenChainId,
             })
 
-            const receipt = await connection.confirmTransaction(hash, {
+            const receipt = await EVMWeb3.confirmTransaction(hash, {
+                chainId: tokenChainId,
                 signal: AbortSignal.timeout(5 * 60 * 1000),
             })
 
@@ -81,13 +81,13 @@ export function useERC20TokenApproveCallback(
                 revalidateAllowance()
             }
         },
-        [account, amount, spender, address, erc20Contract, approveStateType, connection, tokenChainId, chainId],
+        [account, amount, spender, address, approveStateType, tokenChainId, chainId],
     )
 
     const resetCallback = useCallback(() => {
         revalidateBalance()
         revalidateAllowance()
-    }, [revalidateBalance, revalidateAllowance])
+    }, [revalidateBalance])
 
     return [
         {
@@ -96,9 +96,16 @@ export function useERC20TokenApproveCallback(
             amount,
             spender,
             balance,
+            isNativeToken,
         },
-        { ...state, loading: loadingAllowance || loadingBalance || state.loading, loadingApprove: state.loading },
+        {
+            ...state,
+            loading: isNativeToken ? false : loadingAllowance || loadingBalance || state.loading,
+            loadingApprove: isNativeToken ? false : state.loading,
+            loadingAllowance: isNativeToken ? false : loadingAllowance,
+        },
         approveCallback,
         resetCallback,
+        revalidateAllowance,
     ] as const
 }

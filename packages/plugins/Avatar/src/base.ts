@@ -1,6 +1,7 @@
+import { type Plugin } from '@masknet/plugin-infra'
+import { DEFAULT_PLUGIN_PUBLISHER, EnhanceableSite } from '@masknet/shared-base'
 import { PLUGIN_ID } from './constants.js'
-import { languages } from './locales/languages.js'
-import { type Plugin, CurrentSNSNetwork } from '@masknet/plugin-infra'
+import { languages } from './locale/languages.js'
 
 export const base: Plugin.Shared.Definition = {
     ID: PLUGIN_ID,
@@ -8,18 +9,15 @@ export const base: Plugin.Shared.Definition = {
     description: {
         fallback: 'NFT Avatar.',
     },
-    publisher: { name: { fallback: 'Mask Network' }, link: 'https://mask.io/' },
+    publisher: DEFAULT_PLUGIN_PUBLISHER,
     enableRequirement: {
-        networks: {
+        supports: {
             type: 'opt-in',
-            networks: {
-                [CurrentSNSNetwork.Twitter]: true,
-                [CurrentSNSNetwork.Facebook]: false,
-                [CurrentSNSNetwork.Instagram]: false,
+            sites: {
+                [EnhanceableSite.Twitter]: true,
             },
         },
         target: 'stable',
     },
-
     i18n: languages,
 }

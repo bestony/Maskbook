@@ -1,7 +1,4 @@
 import { makeStyles, ActionButton, type ActionButtonProps } from '@masknet/theme'
-import { useRemoteControlledDialog } from '@masknet/shared-base-ui'
-import { WalletMessages } from '@masknet/plugin-wallet'
-import { useSharedI18N } from '../../../locales/index.js'
 import { isZero } from '@masknet/web3-shared-base'
 import {
     useChainContext,
@@ -14,6 +11,8 @@ import type { Web3Helper } from '@masknet/web3-helpers'
 import { useAsync } from 'react-use'
 import { SmartPayBundler } from '@masknet/web3-providers'
 import { NetworkPluginID } from '@masknet/shared-base'
+import { SelectProviderModal, WalletRiskWarningModal } from '../../modals/modals.js'
+import { Trans } from '@lingui/react/macro'
 
 const useStyles = makeStyles()({
     button: {
@@ -28,12 +27,11 @@ export interface WalletConnectedBoundaryProps extends withClasses<'connectWallet
     hideRiskWarningConfirmed?: boolean
     ActionButtonProps?: ActionButtonProps
     startIcon?: React.ReactNode
+    noGasText?: string
 }
 
 export function WalletConnectedBoundary(props: WalletConnectedBoundaryProps) {
-    const { children = null, offChain = false, hideRiskWarningConfirmed = false, expectedChainId } = props
-
-    const t = useSharedI18N()
+    const { children = null, offChain = false, hideRiskWarningConfirmed = false, expectedChainId, noGasText } = props
     const { classes, cx } = useStyles(undefined, { props })
 
     const { pluginID } = useNetworkContext()
@@ -46,13 +44,6 @@ export function WalletConnectedBoundary(props: WalletConnectedBoundaryProps) {
     })
     const approved = useRiskWarningApproved()
 
-    const { setDialog: setRiskWarningDialog } = useRemoteControlledDialog(
-        WalletMessages.events.walletRiskWarningDialogUpdated,
-    )
-    const { openDialog: openSelectProviderDialog } = useRemoteControlledDialog(
-        WalletMessages.events.selectProviderDialogUpdated,
-    )
-
     const buttonClass = cx(classes.button, classes.connectWallet)
 
     if (!account)
@@ -61,9 +52,9 @@ export function WalletConnectedBoundary(props: WalletConnectedBoundaryProps) {
                 startIcon={props.startIcon}
                 className={buttonClass}
                 fullWidth
-                onClick={openSelectProviderDialog}
+                onClick={() => SelectProviderModal.open()}
                 {...props.ActionButtonProps}>
-                {t.plugin_wallet_connect_a_wallet()}
+                <Trans>Connect Wallet</Trans>
             </ActionButton>
         )
 
@@ -74,14 +65,13 @@ export function WalletConnectedBoundary(props: WalletConnectedBoundaryProps) {
                 fullWidth
                 variant="contained"
                 onClick={() => {
-                    setRiskWarningDialog({
-                        open: true,
+                    WalletRiskWarningModal.open({
                         account,
                         pluginID,
                     })
                 }}
                 {...props.ActionButtonProps}>
-                {t.plugin_wallet_confirm_risk_warning()}
+                <Trans>Confirm Risk Warning</Trans>
             </ActionButton>
         )
 
@@ -94,14 +84,16 @@ export function WalletConnectedBoundary(props: WalletConnectedBoundaryProps) {
                 variant="contained"
                 onClick={nativeTokenBalance.retry}
                 {...props.ActionButtonProps}>
-                {nativeTokenBalance.loading ? t.plugin_wallet_update_gas_fee() : t.plugin_wallet_no_gas_fee()}
+                {nativeTokenBalance.loading ?
+                    <Trans>Updating Gas Fee…</Trans>
+                :   (noGasText ?? <Trans>No Enough Gas Fee</Trans>)}
             </ActionButton>
         )
 
     if (!chainIdValid && !offChain)
         return (
             <ActionButton className={buttonClass} disabled fullWidth variant="contained" {...props.ActionButtonProps}>
-                {t.plugin_wallet_invalid_network()}
+                <Trans>Invalid Network</Trans>
             </ActionButton>
         )
 

@@ -1,16 +1,22 @@
-import { createContainer } from 'unstated-next'
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import { createContainer } from '@masknet/shared-base-ui'
+import { EMPTY_OBJECT } from '@masknet/shared-base'
 
-function useMap() {
-    const [map, setMap] = useState<Record<string, string>>({})
+function useMap(initialState?: Record<string, string>) {
+    const [updatedMap, setUpdatedMap] = useState<Record<string, string>>(EMPTY_OBJECT)
 
     const setPair = useCallback((address: string, domain: string) => {
-        setMap((map) => {
+        setUpdatedMap((map) => {
             const key = address.toLowerCase()
-            if (map[key] === domain) return map
+            if (map?.[key] === domain || !domain.includes('.')) return map
             return { ...map, [key]: domain }
         })
     }, [])
+
+    const map = useMemo(() => {
+        return { ...initialState, ...updatedMap }
+    }, [initialState, updatedMap])
+
     const getDomain = useCallback(
         (address: string) => {
             return map[address.toLowerCase()]
@@ -18,7 +24,7 @@ function useMap() {
         [map],
     )
 
-    return { setPair, getDomain }
+    return { setPair, getDomain, map }
 }
 
 export const ScopedDomainsContainer = createContainer(useMap)

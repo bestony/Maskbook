@@ -1,7 +1,7 @@
 import type { Plugin } from '@masknet/plugin-infra'
-import { NetworkPluginID, PluginID } from '@masknet/shared-base'
+import { DEFAULT_PLUGIN_PUBLISHER, EnhanceableSite, NetworkPluginID, PluginID } from '@masknet/shared-base'
 import { ChainId } from '@masknet/web3-shared-evm'
-import { languages } from './locales/languages.js'
+import { languages } from './locale/languages.js'
 
 export const base: Plugin.Shared.Definition = {
     ID: PluginID.Handle,
@@ -9,11 +9,13 @@ export const base: Plugin.Shared.Definition = {
     description: {
         fallback: '',
     },
-    publisher: { name: { fallback: 'Mask Network' }, link: 'https://mask.io/' },
+    publisher: DEFAULT_PLUGIN_PUBLISHER,
     enableRequirement: {
-        networks: {
+        supports: {
             type: 'opt-out',
-            networks: {},
+            sites: {
+                [EnhanceableSite.Localhost]: true,
+            },
         },
         target: 'stable',
         web3: {

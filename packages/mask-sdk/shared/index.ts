@@ -1,16 +1,19 @@
+/// <reference path="../public-api/index.ts" />
+import type { MaskEthereumProviderRpcError } from './error.js'
 export interface BridgeAPI {
-    persona_sign_web3(message: string): Promise<string>
-    sns_appendComposition(message: string, metadata?: ReadonlyMap<string, unknown>): Promise<void>
+    eth_request(request: unknown): Promise<{ e?: MaskEthereumProviderRpcError | null; d?: unknown }>
+    reload(): Promise<void>
 }
 export interface UserScriptAPI {
     // When User script loaded, content script is not loaded. We must _be_ called to make sure CS has loaded.
     request_init(init: InitInformation): Promise<void>
+    eth_message(message: unknown): Promise<void>
 }
 export interface InitInformation {
-    SNSContext: {
-        meta: Mask.SocialNetwork['metadata']
-        connected: boolean
-    }
+    debuggerMode: boolean
 }
-export { serializer } from './serializer.js'
+export { encoder } from './serializer.js'
 export { createMaskSDKChannel } from './channel.js'
+export type * from './types.js'
+export * from './error.js'
+export * from './error-generated.js'

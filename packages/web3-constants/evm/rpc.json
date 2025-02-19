@@ -37,13 +37,9 @@
         ],
         "BSC": ["https://bsc-dataseed.binance.org/"],
         "BSCT": ["https://data-seed-prebsc-1-s1.binance.org:8545/"],
-        "Matic": [
-            "https://polygon-mainnet.infura.io/v3/d74bd8586b9e44449cef131d39ceeefb",
-            "https://polygon-mainnet.infura.io/v3/d65858b010d249419cf8687eca12b094",
-            "https://polygon-mainnet.infura.io/v3/a9d66980bf334e59a42ca19095f3daeb",
-            "https://polygon-mainnet.infura.io/v3/f39cc8734e294fba9c3938486df2b1bc",
-            "https://polygon-mainnet.infura.io/v3/659123dd11294baf8a294d7a11cec92c"
-        ],
+        "Base": ["https://mainnet.base.org"],
+        "Base_Goerli": ["https://goerli.base.org"],
+        "Polygon": ["https://polygon-rpc.com"],
         "Mumbai": [
             "https://polygon-mumbai.infura.io/v3/d74bd8586b9e44449cef131d39ceeefb",
             "https://polygon-mumbai.infura.io/v3/d65858b010d249419cf8687eca12b094",
@@ -67,7 +63,12 @@
         "Aurora": ["https://mainnet.aurora.dev"],
         "Aurora_Testnet": ["https://testnet.aurora.dev"],
         "Conflux": ["https://evm.confluxrpc.com"],
-        "Astar": ["https://astar.api.onfinality.io/public"]
+        "Astar": ["https://astar.api.onfinality.io/public"],
+        "Scroll": ["https://rpc.scroll.io"],
+        "Metis": ["https://andromeda.metis.io/?owner=1088"],
+        "Sei": ["https://evm-rpc.sei-apis.com"],
+        "XLayer": ["https://rpc.xlayer.tech"],
+        "XLayer_Testnet": ["https://testrpc.xlayer.tech"]
     },
     "RPC_URLS_OFFICIAL": {
         "Mainnet": ["https://mainnet.infura.io/v3/d65858b010d249419cf8687eca12b094"],
@@ -77,7 +78,9 @@
         "Gorli": ["https://goerli.infura.io/v3/d65858b010d249419cf8687eca12b094"],
         "BSC": ["https://bsc-dataseed1.binance.org"],
         "BSCT": ["https://data-seed-prebsc-1-s1.binance.org:8545"],
-        "Matic": ["https://polygon-rpc.com/"],
+        "Base": ["https://mainnet.base.org"],
+        "Base_Goerli": ["https://goerli.base.org"],
+        "Polygon": ["https://polygon-rpc.com/"],
         "Mumbai": ["https://matic-mumbai.chainstacklabs.com"],
         "Arbitrum": ["https://arb1.arbitrum.io/rpc"],
         "Arbitrum_Rinkeby": ["https://rinkeby.arbitrum.io/rpc"],
@@ -92,7 +95,12 @@
         "Aurora": ["https://mainnet.aurora.dev"],
         "Aurora_Testnet": ["https://testnet.aurora.dev/"],
         "Conflux": ["https://evm.confluxrpc.com"],
-        "Astar": ["https://rpc.astar.network:8545"]
+        "Astar": ["https://rpc.astar.network:8545"],
+        "Scroll": ["https://rpc.scroll.io"],
+        "Metis": ["https://andromeda.metis.io/?owner=1088"],
+        "Sei": ["https://evm-rpc.sei-apis.com"],
+        "XLayer": ["https://rpc.xlayer.tech"],
+        "XLayer_Testnet": ["https://testrpc.xlayer.tech"]
     },
     "RPC_WEIGHTS": {
         "Mainnet": [0, 1, 2, 3, 4],
@@ -102,7 +110,9 @@
         "Gorli": [0, 1, 2, 3, 4],
         "BSC": [0, 0, 0, 0, 0],
         "BSCT": [0, 0, 0, 0, 0],
-        "Matic": [0, 1, 2, 3, 4],
+        "Base": [0, 0, 0, 0, 0],
+        "Base_Goerli": [0, 0, 0, 0, 0],
+        "Polygon": [0, 1, 2, 3, 4],
         "Mumbai": [0, 1, 2, 3, 4],
         "Arbitrum": [0, 0, 0, 0, 0],
         "Arbitrum_Rinkeby": [0, 0, 0, 0, 0],
@@ -117,6 +127,11 @@
         "Aurora": [0, 0, 0, 0, 0],
         "Aurora_Testnet": [0, 0, 0, 0, 0],
         "Conflux": [0, 0, 0, 0, 0],
-        "Astar": [0, 0, 0, 0, 0]
+        "Astar": [0, 0, 0, 0, 0],
+        "Scroll": [0, 0, 0, 0, 0],
+        "Metis": [0, 0, 0, 0, 0],
+        "Sei": [0, 0, 0, 0, 0],
+        "XLayer": [0, 0, 0, 0, 0],
+        "XLayer_Testnet": [0, 0, 0, 0, 0]
     }
 }

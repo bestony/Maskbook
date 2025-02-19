@@ -1,15 +1,16 @@
 // All plugin manager need to call createPluginHost so let's register plugins implicitly.
 import './register.js'
-import type { BooleanPreference, Plugin } from '@masknet/plugin-infra'
 import { Emitter } from '@servie/events'
-import { createI18NBundle, i18NextInstance } from '@masknet/shared-base'
-import { MaskMessages } from '../../shared/messages.js'
-import { InMemoryStorages, PersistentStorages } from '../../shared/index.js'
-
-export type PartialSharedUIContext = Pick<Plugin.Shared.SharedUIContext, 'createKVStorage'>
-export const createPartialSharedUIContext = (id: string, signal: AbortSignal): PartialSharedUIContext => {
-    return { ...createSharedContext(id, signal) }
-}
+import type { Plugin } from '@masknet/plugin-infra'
+import {
+    BooleanPreference,
+    MaskMessages,
+    createI18NBundle,
+    InMemoryStorages,
+    PersistentStorages,
+} from '@masknet/shared-base'
+import { Flags } from '@masknet/flags'
+import { i18n } from '@lingui/core'
 
 export function createSharedContext(pluginID: string, signal: AbortSignal): Plugin.Shared.SharedContext {
     return {
@@ -20,14 +21,22 @@ export function createSharedContext(pluginID: string, signal: AbortSignal): Plug
     }
 }
 
-export function createPluginHost<Context>(
+export function createPluginHost<Definition, Context>(
     signal: AbortSignal | undefined,
-    createContext: (plugin: string, signal: AbortSignal) => Context,
+    createContext: (plugin: string, definition: Definition, signal: AbortSignal) => Context,
     getPluginMinimalModeEnabled: (id: string) => Promise<BooleanPreference>,
     hasPermission: (host_permission: string[]) => Promise<boolean>,
-): Plugin.__Host.Host<Context> {
+): Plugin.__Host.Host<Definition, Context> {
     const minimalMode: Plugin.__Host.EnabledStatusReporter = {
         isEnabled: getPluginMinimalModeEnabled,
+        events: new Emitter(),
+    }
+    const disabled: Plugin.__Host.EnabledStatusReporter = {
+        isEnabled: (id) => {
+            const result = Flags.globalDisabledPlugins.includes(id)
+            if (result) return BooleanPreference.False
+            return BooleanPreference.True
+        },
         events: new Emitter(),
     }
     const permission: Plugin.__Host.PermissionReporter = {
@@ -42,9 +51,10 @@ export function createPluginHost<Context>(
 
     return {
         signal,
+        disabled,
         minimalMode,
         addI18NResource(plugin, resource) {
-            createI18NBundle(plugin, resource)(i18NextInstance)
+            createI18NBundle(resource)(i18n)
         },
         createContext,
         permission,

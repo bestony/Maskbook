@@ -1,19 +1,21 @@
-import { openDB, type DBSchema } from 'idb/with-async-ittr'
+import { openDB, type DBSchema } from 'idb'
 import { ECKeyIdentifier, Identifier, type PersonaIdentifier, ProfileIdentifier } from '@masknet/shared-base'
 import { createDBAccess, createTransaction, type IDBPSafeTransaction } from '../utils/openDB.js'
 
 const pendingUpdate = new Map<IdentifierWithAvatar, Partial<AvatarMetadataRecord>>()
+// This setTimeout is ok because it is only 10 seconds in mv3 and ok if data is lost.
+// eslint-disable-next-line no-restricted-globals
 let pendingUpdateTimer: ReturnType<typeof setTimeout> | null
 
 // #region Schema
 export type IdentifierWithAvatar = ProfileIdentifier | PersonaIdentifier
-type AvatarRecord = ArrayBuffer
+type AvatarRecord = ArrayBuffer | string
 interface AvatarMetadataRecord {
     identifier: string
     lastUpdateTime: Date
     lastAccessTime: Date
 }
-export interface AvatarDBSchema extends DBSchema {
+interface AvatarDBSchema extends DBSchema {
     /** Use out-of-line keys */
     avatars: {
         value: AvatarRecord
@@ -41,7 +43,7 @@ export const createAvatarDBAccess = createDBAccess(() => {
 export async function storeAvatarDB(
     t: IDBPSafeTransaction<AvatarDBSchema, ['metadata', 'avatars'], 'readwrite'>,
     id: IdentifierWithAvatar,
-    avatar: ArrayBuffer,
+    avatar: ArrayBuffer | string,
 ): Promise<void> {
     const meta: AvatarMetadataRecord = {
         identifier: id.toText(),
@@ -57,16 +59,24 @@ export async function storeAvatarDB(
 export async function queryAvatarDB(
     t: IDBPSafeTransaction<AvatarDBSchema, ['avatars']>,
     id: IdentifierWithAvatar,
-): Promise<ArrayBuffer | null> {
+): Promise<AvatarRecord | null> {
     const result = await t.objectStore('avatars').get(id.toText())
     if (result) scheduleAvatarMetaUpdate(id, { lastAccessTime: new Date() })
     return result || null
+}
+
+export async function queryAvatarMetaDataDB(
+    t: IDBPSafeTransaction<AvatarDBSchema, ['metadata']>,
+    id: IdentifierWithAvatar,
+) {
+    return t.objectStore('metadata').get(id.toText())
 }
 function scheduleAvatarMetaUpdate(id: IdentifierWithAvatar, meta: Partial<AvatarMetadataRecord>) {
     pendingUpdate.set(id, meta)
 
     if (pendingUpdateTimer) return
-    const _1_minute = 60 * 1000
+    const timeout = browser.runtime.getManifest().version === '2' ? 60 * 1000 : 10 * 1000
+    // eslint-disable-next-line no-restricted-globals
     pendingUpdateTimer = setTimeout(async () => {
         try {
             const t = createTransaction(await createAvatarDBAccess(), 'readwrite')('metadata')
@@ -78,7 +88,7 @@ function scheduleAvatarMetaUpdate(id: IdentifierWithAvatar, meta: Partial<Avatar
             pendingUpdateTimer = null
             pendingUpdate.clear()
         }
-    }, _1_minute)
+    }, timeout)
 }
 
 /**
@@ -98,8 +108,8 @@ export async function queryAvatarOutdatedDB(
     for await (const { value } of t.objectStore('metadata')) {
         if (deadline > value[attribute]) {
             const id = Identifier.from(value.identifier)
-            if (id.none) continue
-            if (id.val instanceof ProfileIdentifier || id.val instanceof ECKeyIdentifier) outdated.push(id.val)
+            if (id.isNone()) continue
+            if (id.value instanceof ProfileIdentifier || id.value instanceof ECKeyIdentifier) outdated.push(id.value)
         }
     }
     return outdated

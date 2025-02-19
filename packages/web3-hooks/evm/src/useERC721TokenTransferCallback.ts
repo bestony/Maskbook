@@ -1,31 +1,33 @@
 import { useAsyncFn } from 'react-use'
 import type { NonPayableTx } from '@masknet/web3-contracts/types/types.js'
-import { isSameAddress } from '@masknet/web3-shared-base'
 import type { NetworkPluginID } from '@masknet/shared-base'
-import { isValidAddress, type GasConfig, TransactionEventType } from '@masknet/web3-shared-evm'
+import { isSameAddress } from '@masknet/web3-shared-base'
+import { EVMContract } from '@masknet/web3-providers'
 import { useChainContext } from '@masknet/web3-hooks-base'
-import { useERC721TokenContract } from './useERC721TokenContract.js'
+import { isValidAddress, type GasConfig, TransactionEventType, type ChainId } from '@masknet/web3-shared-evm'
 
-export function useERC721TokenTransferCallback(address?: string) {
-    const { account, chainId } = useChainContext<NetworkPluginID.PLUGIN_EVM>()
-    const erc721Contract = useERC721TokenContract(chainId, address)
+export function useERC721TokenTransferCallback(address?: string, expectedChainId?: ChainId) {
+    const { account, chainId } = useChainContext<NetworkPluginID.PLUGIN_EVM>({ chainId: expectedChainId })
 
     return useAsyncFn(
         async (tokenId?: string, recipient?: string, gasConfig?: GasConfig) => {
-            if (!account || !recipient || !tokenId || !erc721Contract) return
+            if (!account || !address || !recipient || !tokenId) return
 
             // error: invalid recipient address
             if (!isValidAddress(recipient)) return
 
+            const contract = EVMContract.getERC721Contract(address, { chainId })
+            if (!contract) return
+
             // error: invalid ownership
-            const ownerOf = await erc721Contract.methods.ownerOf(tokenId).call()
+            const ownerOf = await contract.methods.ownerOf(tokenId).call()
 
             if (!ownerOf || !isSameAddress(ownerOf, account)) return
 
             // estimate gas and compose transaction
             const config = {
                 from: account,
-                gas: await erc721Contract.methods
+                gas: await contract.methods
                     .transferFrom(account, recipient, tokenId)
                     .estimateGas({
                         from: account,
@@ -37,8 +39,8 @@ export function useERC721TokenTransferCallback(address?: string) {
             }
 
             // send transaction and wait for hash
-            return new Promise<string>(async (resolve, reject) => {
-                erc721Contract.methods
+            return new Promise<string>((resolve, reject) => {
+                contract.methods
                     .transferFrom(account, recipient, tokenId)
                     .send(config as NonPayableTx)
                     .on(TransactionEventType.CONFIRMATION, (_, receipt) => {
@@ -49,6 +51,6 @@ export function useERC721TokenTransferCallback(address?: string) {
                     })
             })
         },
-        [account, erc721Contract],
+        [account, chainId, address],
     )
 }

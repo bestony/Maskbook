@@ -1,7 +1,12 @@
-import urlcat from 'urlcat'
-import { PROOF_BASE_URL_DEV, PROOF_BASE_URL_PROD } from '../NextID/constants.js'
-
 const { fetch: originalFetch } = globalThis
+
+export enum Expiration {
+    ONE_SECOND = 1000,
+    TEN_SECONDS = 10000,
+    ONE_MINUTE = 60000,
+    THIRTY_MINUTES = 1800000,
+    ONE_HOUR = 3600000,
+}
 
 const CACHE = new Map<
     string,
@@ -10,77 +15,70 @@ const CACHE = new Map<
         response: Promise<Response>
     }
 >()
-const RULES = [
-    // NextID
-    urlcat(PROOF_BASE_URL_PROD, '/v1/proof'),
-    urlcat(PROOF_BASE_URL_DEV, '/v1/proof'),
-    urlcat(PROOF_BASE_URL_DEV, '/v1/kv'),
-    urlcat(PROOF_BASE_URL_DEV, '/v1/kv'),
 
-    // GitCoin
-    'https://gitcoin.co',
+function __fetch__(key: string, expiration: number, request: Request, init?: RequestInit, next = originalFetch) {
+    const hit = CACHE.get(key)
+    try {
+        if (hit && hit.timestamp + expiration > Date.now()) return hit.response.then((x) => x.clone())
+    } catch {
+        CACHE.delete(key)
+    }
 
-    // r2d2
-    'https://x2y2-proxy.r2d2.to',
-    'https://gem-proxy.r2d2.to',
-    'https://opensea-proxy.r2d2.to',
-    'https://nftscan-proxy.r2d2.to',
-    'https://alchemy-proxy.r2d2.to',
-    'https://debank-proxy.r2d2.to',
-    'https://vcent-agent.r2d2.to',
-    'https://tokens.r2d2.to',
-    'https://scam.mask.r2d2.to',
-    'https://chainbase-proxy.r2d2.to',
-    'https://coingecko-agent.r2d2.to',
-    'https://coinmarketcap-agent.r2d2.to',
-    'https://kv.r2d2.to',
+    const responsePromise = next(request, init)
 
-    // mask-x
-    'https://7x16bogxfb.execute-api.us-east-1.amazonaws.com',
+    // setup cache for merging subsequent requests
+    if (key) {
+        CACHE.set(key, {
+            timestamp: Date.now(),
+            response: responsePromise,
+        })
+    }
 
-    // twitter-identity
-    'https://mr8asf7i4h.execute-api.us-east-1.amazonaws.com',
+    return responsePromise.then((x) => x.clone())
+}
 
-    // attrace
-    'attrace.com/v1/logsearch',
-    'https://discovery.attrace.com',
+async function defaultResolver(request: Request) {
+    return `${request.method} ${request.url} ${request.method === 'POST' ? await request.text() : 'NULL'}`
+}
 
-    // twitter post images
-    'https://pbs.twimg.com/media',
+export async function stableSquashedCached(
+    info: RequestInfo | URL,
+    init?: RequestInit,
+    resolver = defaultResolver,
+): Promise<Response | void> {
+    const request = new Request(info, init)
 
-    // Smart Pay
-    'https://9rh2q3tdqj.execute-api.ap-east-1.amazonaws.com',
-    'https://uldpla73li.execute-api.ap-east-1.amazonaws.com',
-]
+    // skip not cacheable requests
+    if (request.method !== 'GET' && request.method !== 'POST') return
+
+    // skip all non-http requests
+    const url = request.url
+    if (!url.startsWith('http')) return
+
+    const key = await resolver(request)
+    if (!key) return
+    CACHE.delete(key)
+}
 
 export async function fetchSquashed(
     input: RequestInfo | URL,
     init?: RequestInit,
     next = originalFetch,
+    resolver = defaultResolver,
+    expiration = Expiration.ONE_SECOND,
 ): Promise<Response> {
+    // why: the caches doesn't define in test env
+    if (process.env.NODE_ENV === 'test') return next(input, init)
+
     const request = new Request(input, init)
 
-    // skip all side effect requests
-    if (request.method !== 'GET') return next(request, init)
+    // skip not cacheable requests
+    if (request.method !== 'GET' && request.method !== 'POST') return next(request, init)
 
     // skip all non-http requests
     const url = request.url
     if (!url.startsWith('http')) return next(request, init)
 
-    // no need to cache
-    const rule = RULES.find((x) => url.includes(x))
-    if (!rule) return next(request, init)
-
-    const hit = CACHE.get(url)
-    if (hit && hit.timestamp + 600 > Date.now()) return hit.response.then((x) => x.clone())
-
-    const responsePromise = next(request, init)
-
-    // setup cache for merging subsequent requests
-    CACHE.set(url, {
-        timestamp: Date.now(),
-        response: responsePromise,
-    })
-
-    return responsePromise.then((x) => x.clone())
+    const key = await resolver(request)
+    return __fetch__(key, expiration, request, init, next)
 }

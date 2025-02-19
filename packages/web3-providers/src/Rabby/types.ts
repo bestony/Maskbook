@@ -1,4 +1,6 @@
-export interface RawTokenSpender {
+import type { ReactNode } from 'react'
+
+interface RawTokenSpender {
     id: string
     address: string
     amount: number
@@ -28,12 +30,12 @@ export interface RawTokenInfo {
     spenders: RawTokenSpender[]
 }
 
-export type TokenInfo = Omit<RawTokenInfo, 'spenders'>
+type TokenInfo = Omit<RawTokenInfo, 'spenders'>
 
 export type TokenSpender = Omit<RawTokenSpender, 'protocol'> & {
     tokenInfo: TokenInfo
     name: string | undefined
-    logo: React.ReactNode | undefined
+    logo: ReactNode | undefined
     isMaskDapp: boolean
 }
 

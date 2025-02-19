@@ -1,21 +1,23 @@
-import { memo } from 'react'
-import {
-    Typography,
-    InputBase,
-    Box,
-    Chip,
-    lighten,
-    inputBaseClasses,
-    chipClasses,
-    type InputBaseProps,
-    alpha,
-} from '@mui/material'
+import { Trans } from '@lingui/react/macro'
+import { Icons } from '@masknet/icons'
 import { makeStyles } from '@masknet/theme'
 import type { Web3Helper } from '@masknet/web3-helpers'
+import { useNetworkContext } from '@masknet/web3-hooks-base'
 import { formatBalance } from '@masknet/web3-shared-base'
-import { Icons } from '@masknet/icons'
-import { noop } from 'lodash-es'
-import { FormattedBalance, TokenIcon, useSharedI18N } from '../../../index.js'
+import {
+    alpha,
+    Box,
+    Chip,
+    chipClasses,
+    InputBase,
+    inputBaseClasses,
+    lighten,
+    Typography,
+    type InputBaseProps,
+} from '@mui/material'
+import { memo } from 'react'
+import { FormattedBalance, TokenIcon } from '../../../index.js'
+import { NetworkPluginID } from '@masknet/shared-base'
 
 const useStyles = makeStyles()((theme) => ({
     root: {
@@ -27,8 +29,8 @@ const useStyles = makeStyles()((theme) => ({
             paddingBottom: '0px !important',
             flex: 2,
             paddingLeft: '0px !important',
-            fontSize: 18,
-            fontWeight: 700,
+            fontSize: 14,
+            fontWeight: 400,
         },
     },
     title: {
@@ -56,12 +58,11 @@ const useStyles = makeStyles()((theme) => ({
         fontSize: 14,
         lineHeight: '18px',
         fontWeight: 700,
+        paddingLeft: 4,
         color: theme.palette.maskColor.main,
     },
     tokenIcon: {
-        width: 20,
-        height: 20,
-        marginRight: '0px !important',
+        margin: '0px !important',
     },
     selectToken: {
         backgroundColor: theme.palette.maskColor.primary,
@@ -80,16 +81,22 @@ const useStyles = makeStyles()((theme) => ({
         },
     },
     maxChip: {
-        background: 'inherit',
-        color: theme.palette.maskColor.primary,
-        borderRadius: 4,
-        fontSize: 14,
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: 18,
+        padding: '2px 6px',
+        borderRadius: 999,
+        fontSize: 10,
+        marginLeft: 4,
         fontWeight: 700,
         lineHeight: '18px',
-        padding: '3px 4px',
         cursor: 'pointer',
+        boxSizing: 'border-box',
+        color: theme.palette.maskColor.bottom,
+        background: theme.palette.maskColor.main,
         '&:hover': {
-            background: alpha(theme.palette.maskColor.white, 0.2),
+            background: alpha(theme.palette.maskColor.main, 0.8),
         },
         [`& > .${chipClasses.label}`]: {
             padding: 0,
@@ -107,10 +114,13 @@ const useStyles = makeStyles()((theme) => ({
     arrowIcon: {
         color: `${theme.palette.maskColor.second}!important`,
     },
+    chipLabel: {
+        maxWidth: 150,
+    },
 }))
 
 export interface FungibleTokenInputUIProps extends InputBaseProps {
-    label: string
+    label: React.ReactNode
     disableMax?: boolean
     isNative?: boolean
     token?: Web3Helper.FungibleTokenAll | null
@@ -137,7 +147,7 @@ export const FungibleTokenInputUI = memo<FungibleTokenInputUIProps>(
         ...props
     }) => {
         const { classes, cx } = useStyles()
-        const t = useSharedI18N()
+        const { pluginID } = useNetworkContext()
         return (
             <InputBase
                 fullWidth
@@ -145,62 +155,72 @@ export const FungibleTokenInputUI = memo<FungibleTokenInputUIProps>(
                 endAdornment={
                     <Box className={classes.control} justifyContent={disableBalance ? 'flex-end' : undefined}>
                         <Typography className={classes.label} display="flex" alignItems="center" component="div">
-                            {!disableBalance ? (
+                            {!disableBalance ?
                                 <>
-                                    {isNative ? t.available_balance() : t.balance()}:
+                                    {isNative ?
+                                        <Trans>Available Balance</Trans>
+                                    :   <Trans>Balance</Trans>}
+                                    :
                                     <Typography className={classes.balance} component="span">
-                                        {token && !loadingBalance ? (
+                                        {token && !loadingBalance ?
                                             <FormattedBalance
                                                 value={balance}
-                                                decimals={token?.decimals}
-                                                significant={token?.decimals}
+                                                decimals={token.decimals}
+                                                significant={token.decimals}
                                                 formatter={formatBalance}
                                             />
-                                        ) : (
-                                            '--'
-                                        )}
+                                        :   '--'}
                                     </Typography>
                                 </>
-                            ) : null}
-                            {!disableMax ? (
+                            :   null}
+                            {!disableMax ?
                                 <Chip className={classes.maxChip} label="MAX" size="small" onClick={onMaxClick} />
-                            ) : null}
+                            :   null}
                         </Typography>
-                        {!disableToken ? (
+                        {!disableToken ?
                             <Box display="flex" alignItems="center" columnGap="12px">
-                                {token ? (
-                                    <>
-                                        <Chip
-                                            size="small"
-                                            onClick={onSelectToken}
-                                            className={classes.chip}
-                                            icon={
-                                                <TokenIcon
-                                                    className={classes.tokenIcon}
-                                                    address={token.address}
-                                                    name={token.name}
-                                                    chainId={token.chainId}
-                                                    logoURL={token.logoURL}
-                                                />
-                                            }
-                                            deleteIcon={<Icons.ArrowDrop className={classes.arrowIcon} size={24} />}
-                                            onDelete={noop}
-                                            label={token.symbol}
-                                        />
-                                    </>
-                                ) : (
-                                    <Box className={classes.selectToken} onClick={onSelectToken}>
-                                        {t.select_a_token()}
+                                {token ?
+                                    <Chip
+                                        size="small"
+                                        onClick={onSelectToken}
+                                        className={classes.chip}
+                                        classes={{ label: classes.chipLabel }}
+                                        icon={
+                                            <TokenIcon
+                                                className={classes.tokenIcon}
+                                                address={token.address}
+                                                name={token.name}
+                                                pluginID={pluginID}
+                                                chainId={token.chainId}
+                                                logoURL={token.logoURL}
+                                                size={20}
+                                                badgeSize={10}
+                                                disableBadge={pluginID !== NetworkPluginID.PLUGIN_EVM}
+                                            />
+                                        }
+                                        deleteIcon={<Icons.ArrowDrop className={classes.arrowIcon} size={24} />}
+                                        onDelete={onSelectToken}
+                                        label={token.symbol}
+                                    />
+                                :   <Box className={classes.selectToken} onClick={onSelectToken}>
+                                        <Trans>Select a token</Trans>
                                         <Icons.ArrowDrop size={16} />
                                     </Box>
-                                )}
+                                }
                             </Box>
-                        ) : null}
+                        :   null}
                     </Box>
                 }
                 {...props}
+                onChange={(ev) => {
+                    if (ev.currentTarget.value && !new RegExp(props.inputProps?.pattern).test(ev.currentTarget.value)) {
+                        return
+                    }
+                    props.onChange?.(ev)
+                }}
                 className={cx(classes.root, props.className)}
             />
         )
     },
 )
+FungibleTokenInputUI.displayName = 'FungibleTokenInputUI'

@@ -1,7 +1,6 @@
-import { openDB } from 'idb/with-async-ittr'
-import { CryptoKeyToJsonWebKey } from '../../../utils-pure/index.js'
-import { createDBAccessWithAsyncUpgrade, createTransaction } from '../utils/openDB.js'
-import { assertPersonaDBConsistency } from './consistency.js'
+import { isEmpty } from 'lodash-es'
+import { openDB } from 'idb'
+import { bytesToHex, privateToPublic, publicToAddress } from '@ethereumjs/util'
 import {
     type AESJsonWebKey,
     convertIdentifierMapToRawMap,
@@ -11,9 +10,11 @@ import {
     ProfileIdentifier,
     RelationFavor,
     fromBase64URL,
+    MaskMessages,
 } from '@masknet/shared-base'
-import { bufferToHex, privateToPublic, publicToAddress } from 'ethereumjs-util'
-import { MaskMessages } from '../../../shared/index.js'
+import { CryptoKeyToJsonWebKey } from '../../../utils-pure/index.js'
+import { createDBAccessWithAsyncUpgrade, createTransaction } from '../utils/openDB.js'
+import { assertPersonaDBConsistency } from './consistency.js'
 import type {
     FullPersonaDBTransaction,
     ProfileTransaction,
@@ -29,7 +30,7 @@ import type {
     RelationRecordDB,
     PersonaRecord,
 } from './type.js'
-import { isEmpty } from 'lodash-es'
+
 /**
  * Database structure:
  *
@@ -106,9 +107,9 @@ const db = createDBAccessWithAsyncUpgrade<PersonaDB, Knowledge>(
                         async function update(q: typeof relation) {
                             for await (const rec of relation) {
                                 rec.value.favor =
-                                    rec.value.favor === RelationFavor.DEPRECATED
-                                        ? RelationFavor.UNCOLLECTED
-                                        : RelationFavor.COLLECTED
+                                    rec.value.favor === RelationFavor.DEPRECATED ?
+                                        RelationFavor.UNCOLLECTED
+                                    :   RelationFavor.COLLECTED
 
                                 await rec.update(rec.value)
                             }
@@ -174,8 +175,8 @@ export async function consistentPersonaDBWriteAccess(
     t.addEventListener('error', finish)
 
     // Pause those events when patching write access
-    const resumePersona = MaskMessages.events.ownPersonaChanged.pause()
-    const resumeRelation = MaskMessages.events.relationsChanged.pause()
+    const resumePersona = MaskMessages.events.ownPersonaChanged.pause!()
+    const resumeRelation = MaskMessages.events.relationsChanged.pause!()
     try {
         await action(t)
     } finally {
@@ -195,11 +196,6 @@ export async function consistentPersonaDBWriteAccess(
             resumeRelation(() => [])
         }
     }
-}
-
-/** @internal */
-export async function createReadonlyPersonaTransaction() {
-    return createTransaction(await db(), 'readonly')
 }
 
 // #region Plain methods
@@ -334,9 +330,10 @@ export async function createOrUpdatePersonaDB(
         return createPersonaDB(
             {
                 ...record,
-                address: record.privateKey?.d
-                    ? bufferToHex(publicToAddress(privateToPublic(Buffer.from(fromBase64URL(record.privateKey.d)))))
-                    : undefined,
+                address:
+                    record.privateKey?.d ?
+                        bytesToHex(publicToAddress(privateToPublic(fromBase64URL(record.privateKey.d))))
+                    :   undefined,
                 createdAt: record.createdAt ?? new Date(),
                 updatedAt: record.updatedAt ?? new Date(),
                 linkedProfiles: record.linkedProfiles ?? new Map(),
@@ -437,19 +434,19 @@ export async function queryProfilesDB(
     return result
 }
 
-/** @internal */
-export async function updateProfileDB(
+async function updateProfileDB(
     updating: Partial<ProfileRecord> & Pick<ProfileRecord, 'identifier'>,
     t: FullPersonaDBTransaction<'readwrite'>,
 ): Promise<void> {
     const old = await t.objectStore('profiles').get(updating.identifier.toText())
     if (!old) throw new Error('Updating a non exists record')
-    const oldLinkedPersona = old.linkedPersona
-        ? new ECKeyIdentifier(
-              old.linkedPersona.curve,
-              old.linkedPersona.compressedPoint || old.linkedPersona.encodedCompressedKey!,
-          )
-        : undefined
+    const oldLinkedPersona =
+        old.linkedPersona ?
+            new ECKeyIdentifier(
+                old.linkedPersona.curve,
+                old.linkedPersona.compressedPoint || old.linkedPersona.encodedCompressedKey!,
+            )
+        :   undefined
 
     if (oldLinkedPersona && updating.linkedPersona && oldLinkedPersona !== updating.linkedPersona) {
         const oldIdentifier = ProfileIdentifier.from(old.identifier).expect(
@@ -593,9 +590,9 @@ export async function queryRelationsPagedDB(
 
     for await (const cursor of t.objectStore('relations').index('favor, profile, linked').iterate()) {
         if (cursor.value.linked !== linked.toText()) continue
-        if (cursor.value.network !== options.network) continue
+        if (options.network !== 'all' && cursor.value.network !== options.network) continue
 
-        if (firstRecord && options.after && options.after.profile.toText() !== cursor?.value.profile) {
+        if (firstRecord && options.after && options.after.profile.toText() !== cursor.value.profile) {
             cursor.continue([options.after.favor, options.after.profile.toText(), options.after.linked.toText()])
             firstRecord = false
             continue
@@ -605,8 +602,8 @@ export async function queryRelationsPagedDB(
 
         // after this record
         if (
-            options.after?.linked.toText() === cursor?.value.linked &&
-            options.after?.profile.toText() === cursor?.value.profile
+            options.after?.linked.toText() === cursor.value.linked &&
+            options.after.profile.toText() === cursor.value.profile
         )
             continue
 
@@ -644,6 +641,19 @@ export async function updateRelationDB(
 }
 
 /** @internal */
+export async function deletePersonaRelationDB(
+    persona: PersonaIdentifier,
+    linkedPersona: PersonaIdentifier,
+    t: RelationTransaction<'readwrite'>,
+    silent = false,
+): Promise<void> {
+    const old = await t.objectStore('relations').get(IDBKeyRange.only([linkedPersona.toText(), persona.toText()]))
+    if (!old) return
+    await t.objectStore('relations').delete(IDBKeyRange.only([linkedPersona.toText(), persona.toText()]))
+    if (!silent) MaskMessages.events.relationsChanged.sendToAll([{ of: persona, reason: 'delete', favor: old.favor }])
+}
+
+/** @internal */
 export async function createOrUpdateRelationDB(
     record: Omit<RelationRecord, 'network'>,
     t: RelationTransaction<'readwrite'>,
@@ -668,9 +678,10 @@ function profileToDB(x: ProfileRecord): ProfileRecordDB {
         ...x,
         identifier: x.identifier.toText(),
         network: x.identifier.network,
-        linkedPersona: x.linkedPersona
-            ? { curve: x.linkedPersona.curve, type: 'ec_key', compressedPoint: x.linkedPersona.rawPublicKey }
-            : undefined,
+        linkedPersona:
+            x.linkedPersona ?
+                { curve: x.linkedPersona.curve, type: 'ec_key', compressedPoint: x.linkedPersona.rawPublicKey }
+            :   undefined,
     }
 }
 function profileOutDB({ network, ...x }: ProfileRecordDB): ProfileRecord {
@@ -682,12 +693,13 @@ function profileOutDB({ network, ...x }: ProfileRecordDB): ProfileRecord {
         identifier: ProfileIdentifier.from(x.identifier).expect(
             `data stored in the profile database should be a valid ProfileIdentifier, but found ${x.identifier}`,
         ),
-        linkedPersona: x.linkedPersona
-            ? new ECKeyIdentifier(
-                  x.linkedPersona.curve,
-                  x.linkedPersona.compressedPoint || x.linkedPersona.encodedCompressedKey!,
-              )
-            : undefined,
+        linkedPersona:
+            x.linkedPersona ?
+                new ECKeyIdentifier(
+                    x.linkedPersona.curve,
+                    x.linkedPersona.compressedPoint || x.linkedPersona.encodedCompressedKey!,
+                )
+            :   undefined,
     }
 }
 function personaRecordToDB(x: PersonaRecord): PersonaRecordDB {
@@ -706,9 +718,8 @@ function personaRecordOutDB(x: PersonaRecordDB): PersonaRecord {
 
     const obj: PersonaRecord = {
         ...x,
-        address: x.privateKey?.d
-            ? bufferToHex(publicToAddress(privateToPublic(Buffer.from(fromBase64URL(x.privateKey.d)))))
-            : undefined,
+        address:
+            x.privateKey?.d ? bytesToHex(publicToAddress(privateToPublic(fromBase64URL(x.privateKey.d)))) : undefined,
         identifier,
         publicHexKey: identifier.publicKeyAsHex,
         linkedProfiles: convertRawMapToIdentifierMap(x.linkedProfiles, ProfileIdentifier),
@@ -717,23 +728,43 @@ function personaRecordOutDB(x: PersonaRecordDB): PersonaRecord {
 }
 
 function relationRecordToDB(x: Omit<RelationRecord, 'network'>): RelationRecordDB {
-    return {
-        ...x,
-        network: x.profile.network,
-        profile: x.profile.toText(),
-        linked: x.linked.toText(),
+    if (x.profile instanceof ProfileIdentifier) {
+        return {
+            ...x,
+            network: x.profile.network,
+            profile: x.profile.toText(),
+            linked: x.linked.toText(),
+        }
+    } else {
+        return {
+            ...x,
+            profile: x.profile.toText(),
+            linked: x.linked.toText(),
+        }
     }
 }
 
 function relationRecordOutDB(x: RelationRecordDB): RelationRecord {
-    return {
-        ...x,
-        profile: ProfileIdentifier.from(x.profile).expect(
-            `data stored in the profile database should be a valid ProfileIdentifier, but found ${x.profile}`,
-        ),
-        linked: ECKeyIdentifier.from(x.linked).expect(
-            `data stored in the profile database should be a valid ECKeyIdentifier, but found ${x.linked}`,
-        ),
+    if (x.profile.startsWith('person:')) {
+        return {
+            ...x,
+            profile: ProfileIdentifier.from(x.profile).expect(
+                `data stored in the profile database should be a valid ProfileIdentifier, but found ${x.profile}`,
+            ),
+            linked: ECKeyIdentifier.from(x.linked).expect(
+                `data stored in the profile database should be a valid ECKeyIdentifier, but found ${x.linked}`,
+            ),
+        }
+    } else {
+        return {
+            ...x,
+            profile: ECKeyIdentifier.from(x.profile).expect(
+                `data stored in the profile database should be a valid ECKeyIdentifier, but found ${x.profile}`,
+            ),
+            linked: ECKeyIdentifier.from(x.linked).expect(
+                `data stored in the profile database should be a valid ECKeyIdentifier, but found ${x.linked}`,
+            ),
+        }
     }
 }
 

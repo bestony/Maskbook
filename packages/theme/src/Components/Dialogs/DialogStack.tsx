@@ -1,5 +1,5 @@
-import { useRef, useContext, createContext, useState, useMemo, useEffect } from 'react'
-import { type DialogProps, Backdrop } from '@mui/material'
+import { useRef, useContext, createContext, useState, useMemo, useLayoutEffect } from 'react'
+import { type DialogProps } from '@mui/material'
 import { noop } from 'lodash-es'
 
 interface StackContext {
@@ -40,7 +40,7 @@ DialogHierarchyContext.displayName = 'DialogHierarchyContext'
  *     return <TrackDialogHierarchy>
  *         <button onClick={() => setOpen(true)}></button>
  *         <Dialog open={open} {...extraProps}>
- *             You MUST hide Close button and and BackButton based on the value of `shouldReplaceExitWithBack`
+ *             You MUST hide Close button and BackButton based on the value of `shouldReplaceExitWithBack`
  *         </Dialog>
  *     </TrackDialogHierarchy>
  * }
@@ -54,16 +54,16 @@ export function useDialogStackActor(open: boolean): useDialogStackActorReturn {
     // the stack will be ["B", "A"] (B pushed into the stack first.)
     // we need to notify the context the react component tree hierarchy to order them correctly.
     const parentID = useContext(DialogHierarchyContext)
-    useEffect(() => setParent(selfID, parentID), [parentID])
+    useLayoutEffect(() => setParent(selfID, parentID), [parentID])
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         open ? push(selfID) : pop(selfID)
         return () => pop(selfID)
     }, [open])
 
     const TrackDialogHierarchy = (useRef<useDialogStackActorReturn['TrackDialogHierarchy']>(null!).current ??=
         function TrackDialogHierarchy({ children }) {
-            return <DialogHierarchyContext.Provider value={selfID}>{children}</DialogHierarchyContext.Provider>
+            return <DialogHierarchyContext value={selfID}>{children}</DialogHierarchyContext>
         })
 
     const returnVal: useDialogStackActorReturn = {
@@ -92,10 +92,10 @@ export function useDialogStackActor(open: boolean): useDialogStackActorReturn {
 export interface useDialogStackActorReturn {
     shouldReplaceExitWithBack: boolean
     extraProps: DialogProps
-    TrackDialogHierarchy: React.ComponentType<React.PropsWithChildren<{}>>
+    TrackDialogHierarchy: React.ComponentType<React.PropsWithChildren>
 }
 
-export interface DialogStackingProviderProps extends React.PropsWithChildren<{}> {
+export interface DialogStackingProviderProps extends React.PropsWithChildren {
     hasGlobalBackdrop?: boolean
 }
 
@@ -150,12 +150,11 @@ export function DialogStackingProvider(props: DialogStackingProviderProps) {
             },
         }
     }, [stack, hierarchy, props.hasGlobalBackdrop])
-    return <DialogStackingContext.Provider value={context}>{props.children}</DialogStackingContext.Provider>
+    return <DialogStackingContext value={context}>{props.children}</DialogStackingContext>
 }
 
-export function GlobalBackdrop(props: React.PropsWithChildren<{}>) {
-    const { stack } = useContext(DialogStackingContext)
-    return <Backdrop open={stack.length > 0} />
+export function useDialogStacking() {
+    return useContext(DialogStackingContext)
 }
 
 type Hierarchy = {

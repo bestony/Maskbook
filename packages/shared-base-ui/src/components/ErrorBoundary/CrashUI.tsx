@@ -1,10 +1,14 @@
 import { useTimeoutFn } from 'react-use'
-import { useMemo, useState, useContext } from 'react'
-import { Box, Button, IconButton, Typography, Alert, AlertTitle, styled } from '@mui/material'
+import { useMemo, useState } from 'react'
+import { Button, IconButton, Typography, Alert, AlertTitle, styled } from '@mui/material'
 import { ExpandLess, ExpandMore } from '@mui/icons-material'
-import { BuildInfo, type ErrorBoundaryError } from './context.js'
-import { useSharedBaseI18N } from '../../locales/index.js'
+import { useBuildInfoMarkdown, type ErrorBoundaryError } from './context.js'
+import { makeStyles } from '@masknet/theme'
+import { Trans } from '@lingui/react/macro'
 
+const useStyles = makeStyles()({
+    message: { flex: 1 },
+})
 export interface CrashUIProps extends React.PropsWithChildren<ErrorBoundaryError> {
     /** Type of the Error */
     type: string
@@ -17,8 +21,8 @@ export interface CrashUIProps extends React.PropsWithChildren<ErrorBoundaryError
     onRetry: () => void
 }
 export function CrashUI({ onRetry, subject, ...error }: CrashUIProps) {
-    const context = useContext(BuildInfo)
-    const t = useSharedBaseI18N()
+    const context = useBuildInfoMarkdown()
+    const { classes } = useStyles()
 
     const [showStack, setShowStack] = useState(false)
 
@@ -53,30 +57,35 @@ Error stack:
     }, [reportBody, reportTitle])
     return (
         <Root>
-            <Alert severity="error" variant="outlined">
-                <AlertTitle>{t.error_boundary_crash_title({ subject })}</AlertTitle>
+            <Alert severity="error" variant="outlined" classes={{ message: classes.message }}>
+                <AlertTitle>
+                    <Trans>{subject} has an error</Trans>
+                </AlertTitle>
                 <ErrorTitle>
                     {error.type}: {error.message}
                 </ErrorTitle>
                 <ActionArea>
                     <Button variant="contained" color="primary" onClick={onRetry}>
-                        {t.error_boundary_try_to_recover()}
+                        <Trans>Try to recover</Trans>
                     </Button>
                     <Button href={githubLink} color="primary" target="_blank">
-                        {t.error_boundary_report_github()}
+                        <Trans>Report on GitHub</Trans>
                     </Button>
-                    <Box sx={{ flex: 1 }} />
-                    <IconButton color="inherit" size="small" onClick={() => setShowStack((x) => !x)}>
-                        {showStack ? <ExpandMore /> : <ExpandLess />}
-                    </IconButton>
+                    <IconButtonContainer>
+                        <IconButton color="inherit" size="small" onClick={() => setShowStack((x) => !x)}>
+                            {showStack ?
+                                <ExpandMore />
+                            :   <ExpandLess />}
+                        </IconButton>
+                    </IconButtonContainer>
                 </ActionArea>
-                {showStack ? (
+                {showStack ?
                     <ErrorStack>
                         <Typography component="pre">
                             <code>{error.stack}</code>
                         </Typography>
                     </ErrorStack>
-                ) : null}
+                :   null}
             </Alert>
         </Root>
     )
@@ -86,7 +95,7 @@ const Root = styled('div')`
     flex: 1;
     width: 100%;
     contain: paint;
-    margin-top: 16px;
+    padding: 8px;
 `
 
 const ErrorTitle = styled('div')`
@@ -97,10 +106,20 @@ const ErrorTitle = styled('div')`
 const ErrorStack = styled('div')`
     user-select: text;
     overflow-x: auto;
-    height: 300px;
+    margin-top: 16px;
 `
 
 const ActionArea = styled('div')`
     display: flex;
     gap: 8px;
+    @media screen and (max-width: 500px) {
+        flex-direction: column;
+        gap: 8px;
+    }
+`
+
+const IconButtonContainer = styled('div')`
+    display: flex;
+    justify-content: center;
+    align-items: center;
 `

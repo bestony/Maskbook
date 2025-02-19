@@ -1,6 +1,6 @@
-import { useCustomSnackbar, usePopupCustomSnackbar } from '@masknet/theme'
 import { useCallback } from 'react'
-import { useSharedI18N } from '../locales/index.js'
+import { useCustomSnackbar, usePopupCustomSnackbar } from '@masknet/theme'
+import { Trans } from '@lingui/react/macro'
 
 export function useSnackbarCallback<P extends (...args: any[]) => Promise<T>, T>(options: SnackbarCallback<P, T>): P
 /** Prefer the first overload. */
@@ -22,7 +22,6 @@ export function useSnackbarCallback<P extends (...args: any[]) => Promise<T>, T>
     successText?: string | React.ReactNode,
     errorText?: string | React.ReactNode,
 ) {
-    const t = useSharedI18N()
     const { showSnackbar } = useCustomSnackbar()
     const executor = typeof opts === 'function' ? opts : opts.executor
     if (typeof opts === 'object') {
@@ -38,7 +37,7 @@ export function useSnackbarCallback<P extends (...args: any[]) => Promise<T>, T>
         (...args: any[]) =>
             executor(...args).then(
                 (res) => {
-                    showSnackbar(successText ?? t.snackbar_done(), {
+                    showSnackbar(successText ?? <Trans>Done</Trans>, {
                         key,
                         variant: 'success',
                         preventDuplicate: true,
@@ -56,6 +55,7 @@ export function useSnackbarCallback<P extends (...args: any[]) => Promise<T>, T>
                     throw error
                 },
             ),
+        // eslint-disable-next-line react-compiler/react-compiler
         [...deps!, showSnackbar, executor, onError, onSuccess, key, successText, errorText],
     )
 }
@@ -72,7 +72,6 @@ export function usePopupSnackbarCallback<P extends (...args: any[]) => Promise<T
     key?: string,
     successText?: string,
 ) {
-    const t = useSharedI18N()
     const { showSnackbar } = usePopupCustomSnackbar()
     const executor = typeof opts === 'function' ? opts : opts.executor
     if (typeof opts === 'object') {
@@ -88,7 +87,7 @@ export function usePopupSnackbarCallback<P extends (...args: any[]) => Promise<T
         (...args: any[]) =>
             executor(...args).then(
                 (res) => {
-                    showSnackbar(successText ?? t.snackbar_done(), {
+                    showSnackbar(successText ?? <Trans>Done</Trans>, {
                         key,
                         variant: 'success',
                         preventDuplicate: true,
@@ -106,6 +105,7 @@ export function usePopupSnackbarCallback<P extends (...args: any[]) => Promise<T
                     throw error
                 },
             ),
+        // eslint-disable-next-line react-compiler/react-compiler
         [...deps!, showSnackbar, executor, onError, onSuccess, key, successText],
     )
 }

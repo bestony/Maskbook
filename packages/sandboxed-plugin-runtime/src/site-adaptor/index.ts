@@ -1,12 +1,11 @@
 import { PluginRuntime } from '../runtime/runtime.js'
-import { type BasicHostHooks, type BasicHostInstance, PluginRunner } from '../runtime/runner.js'
+import { type BasicHostHooks, type BasicHostInstance, SandboxedPluginHost } from '../runtime/runner.js'
 import { getURL } from '../utils/url.js'
 import { addPeerDependencies } from '../peer-dependencies/index.js'
-import { addPeerDependenciesDOM, createI18nHooksAndTranslate } from '../peer-dependencies-dom/index.js'
+import { addPeerDependenciesDOM } from '../peer-dependencies-dom/index.js'
 import { AsyncCall, AsyncGeneratorCall } from 'async-call-rpc/full'
-import { serializer } from '@masknet/shared-base'
+import { encoder } from '@masknet/shared-base'
 import { isManifest } from '../utils/manifest.js'
-import { Children } from 'react'
 
 export interface SiteAdaptorHostHooks extends BasicHostHooks {
     attachCompositionMetadata(pluginID: string, metaID: string, meta: unknown): void
@@ -23,7 +22,7 @@ export interface SiteAdaptorInstance extends BasicHostInstance {
         meta: unknown,
     ): { text: React.ReactNode; tooltip?: React.ReactNode } | null
 }
-export class SiteAdaptorPluginHost extends PluginRunner<SiteAdaptorHostHooks, SiteAdaptorInstance> {
+export class SiteAdaptorPluginHost extends SandboxedPluginHost<SiteAdaptorHostHooks, SiteAdaptorInstance> {
     constructor(
         hooks: SiteAdaptorHostHooks,
         allowLocalOverrides: boolean,
@@ -59,9 +58,6 @@ export class SiteAdaptorPluginHost extends PluginRunner<SiteAdaptorHostHooks, Si
                 if (!('text' in data))
                     throw new TypeError('registerMetadataBadgeRender must return an object with text.')
                 const { text, tooltip } = data
-                // assert
-                Children.only(text)
-                tooltip && Children.only(tooltip)
                 return { text, tooltip }
             },
         }
@@ -92,14 +88,11 @@ export class SiteAdaptorPluginHost extends PluginRunner<SiteAdaptorHostHooks, Si
                 MetadataBadgeRender.set(metaID, render)
             },
             registerCompositionEntry: (label: unknown, dialog: unknown) => {
-                Children.only(label)
-                // label asserted before, dialog leave it to runtime error
                 instance.CompositionEntry = { label: label as any, dialog: dialog as any }
             },
         })
 
         runtime.addNamespaceModule('@masknet/plugin-hooks', {
-            ...createI18nHooksAndTranslate(id),
             // TODO: implement this
             // TODO: move this to @masknet/plugin/content-script/react
             usePluginWrapper: () => void 0,
@@ -124,17 +117,19 @@ export class SiteAdaptorPluginHost extends PluginRunner<SiteAdaptorHostHooks, Si
         if (hasRPC) {
             namespace.worker = AsyncCall(null, {
                 channel: this.hooks.createRpcChannel(id, this.signal),
-                serializer,
+                encoder,
                 log: true,
                 thenable: false,
+                signal: this.signal,
             })
         }
         if (hasRPCGenerator) {
             namespace.workerGenerator = AsyncGeneratorCall(null, {
                 channel: this.hooks.createRpcGeneratorChannel(id, this.signal),
-                serializer,
+                encoder,
                 log: true,
                 thenable: false,
+                signal: this.signal,
             })
         }
         runtime.addNamespaceModule('@masknet/plugin/utils/rpc', namespace)

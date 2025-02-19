@@ -1,9 +1,5 @@
-# tailwind
-packages/app/src/styles/index.css
-
 # generated files
 i18n_generated*
-icon-generated*
 .swc
 .env/dev-preference
 
@@ -29,8 +25,6 @@ icon-generated*
 dist
 build
 /build-*
-storybook-static
-packages/netlify/sites/
 /MaskNetwork.*.zip
 compilation-stats.json
 
@@ -127,3 +121,4 @@ common/autoinstallers/*/.npmrc
 # Disallow other package manager lock-file
 /package-lock.json
 /yarn.lock
+quick-lint-js.config

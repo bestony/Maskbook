@@ -1,24 +1,13 @@
-import { registerPlugin } from '@masknet/plugin-infra'
-import { base } from './base.js'
-export * from './SNSAdaptor/index.js'
 export * from './types.js'
 export * from './constants.js'
 export * from './utils/index.js'
-export * from './hooks/index.js'
 
-registerPlugin({
-    ...base,
-    SNSAdaptor: {
-        load: () => import('./SNSAdaptor/index.js'),
-        hotModuleReload: (hot) =>
-            // eslint-disable-next-line @typescript-eslint/prefer-optional-chain
-            import.meta.webpackHot &&
-            import.meta.webpackHot.accept('./SNSAdaptor', () => hot(import('./SNSAdaptor/index.js'))),
-    },
-    Worker: {
-        load: () => import('./Worker/index.js'),
-        hotModuleReload: (hot) =>
-            // eslint-disable-next-line @typescript-eslint/prefer-optional-chain
-            import.meta.webpackHot && import.meta.webpackHot.accept('./Worker', () => hot(import('./Worker/index.js'))),
-    },
-})
+export * from './SiteAdaptor/NFTAvatar.js'
+export * from './SiteAdaptor/NFTAvatarButton.js'
+export * from './SiteAdaptor/NFTAvatarRing.js'
+export * from './SiteAdaptor/NFTBadge.js'
+export * from './SiteAdaptor/NFTBadgeTimeline.js'
+export * from './SiteAdaptor/NFTImage.js'
+export * from './SiteAdaptor/RainbowBox.js'
+
+export * from './hooks/useSaveStringStorage.js'

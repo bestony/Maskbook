@@ -40,12 +40,12 @@ export interface AlchemyNFT_EVM {
     timeLastUpdated: string
 }
 
-export interface AlchemyResponse_FLOW {
+export interface AlchemyResponse_Flow {
     ownerAddress: string
-    nfts: AlchemyNFT_FLOW[]
+    nfts: AlchemyNFT_Flow[]
 }
 
-export interface AlchemyNFT_FLOW {
+export interface AlchemyNFT_Flow {
     contract: {
         name: string
         address: string
@@ -84,7 +84,7 @@ export interface AlchemyResponse_EVM_Metadata {
     id: {
         tokenId: string
         tokenMetadata: {
-            tokenType: 'ERC721' | 'ERC1155'
+            tokenType: 'ERC721' | 'ERC1155' | 'NOT_A_CONTRACT'
         }
     }
     title: string
@@ -119,6 +119,11 @@ export interface AlchemyResponse_EVM_Metadata {
         }>
     }
     timeLastUpdated: string
+    /**
+     * e.g. "Contract does not have any code"
+     * and id.tokenMetadata.tokenType will be NOT_A_CONTRACT
+     */
+    error?: string
 }
 
 export interface AlchemyResponse_EVM_Contact_Metadata {
@@ -134,7 +139,7 @@ export interface AlchemyResponse_EVM_Owners {
     owners: string[]
 }
 
-export interface AlchemyResponse_FLOW_Metadata {
+export interface AlchemyResponse_Flow_Metadata {
     contract: {
         name: string
         address: string

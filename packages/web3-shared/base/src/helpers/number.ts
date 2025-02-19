@@ -1,11 +1,12 @@
 import { BigNumber } from 'bignumber.js'
-import { isUndefined } from 'lodash-es'
+import { isUndefined, trimEnd } from 'lodash-es'
 
 export const ZERO = new BigNumber('0')
 export const ONE = new BigNumber('1')
 
 /** if abs(n) < m then return 0 */
-export function toZero(n: BigNumber.Value, m = 1e-6) {
+export function toZero(n?: BigNumber.Value, m = 1e-6) {
+    if (!n) return ZERO
     const n_ = new BigNumber(n)
     return n_.abs().isLessThanOrEqualTo(m) ? ZERO : n_
 }
@@ -31,9 +32,10 @@ export function isGreaterThan(a: BigNumber.Value, b: BigNumber.Value) {
 }
 
 /** a >= b */
-export function isGreaterThanOrEqualTo(a: BigNumber.Value, b: BigNumber.Value) {
+function isGreaterThanOrEqualTo(a: BigNumber.Value, b: BigNumber.Value) {
     return new BigNumber(a).isGreaterThanOrEqualTo(b)
 }
+export { isGreaterThanOrEqualTo, isGreaterThanOrEqualTo as isGte }
 
 /** a < b */
 export function isLessThan(a: BigNumber.Value, b: BigNumber.Value) {
@@ -44,8 +46,9 @@ export function isLessThan(a: BigNumber.Value, b: BigNumber.Value) {
 export function isLessThanOrEqualTo(a: BigNumber.Value, b: BigNumber.Value) {
     return new BigNumber(a).isLessThanOrEqualTo(b)
 }
+export { isLessThanOrEqualTo as isLte }
 
-/** a > 0 */
+/** a >= 0 */
 export function isPositive(n: BigNumber.Value) {
     return new BigNumber(n).isPositive()
 }
@@ -104,7 +107,25 @@ export function toFixed(value: BigNumber.Value = 0, decimalPlaces?: number) {
     return !isUndefined(decimalPlaces) ? n.toFixed(decimalPlaces) : n.toFixed()
 }
 
-export function formatInteger(value: BigNumber.Value | null | undefined, fallback?: string | number) {
-    if (value === undefined || value === null) return fallback
-    return new BigNumber(value).toFormat(0)
+/** Trim ending zeros of decimals */
+export function trimZero(digit: string) {
+    const result = digit.replaceAll(/\.([1-9]*)?0+$/g, (_, p1) => {
+        return p1 ? `.${p1}` : ''
+    })
+
+    if (isLessThan(result, 1)) {
+        return trimEnd(result, '0')
+    }
+
+    return result
+}
+
+export function addThousandSeparators(num: string | number) {
+    try {
+        return num.toString().replaceAll(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ',')
+    } catch (err) {
+        // Safari doesn't support regexp look behind yet
+        const value = typeof num === 'number' ? num : Number.parseFloat(num)
+        return value.toLocaleString('en-US')
+    }
 }

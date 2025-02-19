@@ -9,10 +9,10 @@ import {
     ParseLinkTransformer,
     type TypedMessage,
     visitEachTypedMessageChild,
+    unstable_STYLE_META,
 } from '@masknet/typed-message'
-import { unstable_TUPLE_RENDER_STYLE } from '@masknet/typed-message-react'
 
-export enum Order {
+enum Order {
     Flatten = 1000,
     ParseLink = 900,
     // MaskPayload = 800,
@@ -23,10 +23,10 @@ export enum Order {
 /**
  * Message transformation order:
  *
- * sns_parsed_message
+ * parsed_message
  * |> flatten
  * |> parse links and tags (@user, #tag, $NAME)
- * |> Mask Payload parser (installed in SNS Adaptor starts)
+ * |> Mask Payload parser (installed in Site Adaptor starts)
  * |> plugins
  */
 export const TypedMessageTransformers = composeTransformers()
@@ -85,7 +85,7 @@ TypedMessageTransformers.addTransformer(function visitor(message, context) {
                             makeTypedMessageAnchor('normal', 'https://mask.io', 'Mask.io'),
                             makeTypedMessageText(') '),
                         ],
-                        new Map([[unstable_TUPLE_RENDER_STYLE, { opacity: 0.5 }]]),
+                        new Map([[unstable_STYLE_META, { opacity: 0.5 }]]),
                     ),
                 )
             } else {

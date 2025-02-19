@@ -7,7 +7,9 @@
         "Gorli": ["https://imagedelivery.net/PCnTHRkdRhGodr0AWBAvMA/Assets/blockchains/ethereum"],
         "BSC": ["https://imagedelivery.net/PCnTHRkdRhGodr0AWBAvMA/Assets/blockchains/smartchain"],
         "BSCT": ["https://imagedelivery.net/PCnTHRkdRhGodr0AWBAvMA/Assets/blockchains/smartchain"],
-        "Matic": ["https://imagedelivery.net/PCnTHRkdRhGodr0AWBAvMA/Assets/blockchains/polygon"],
+        "Base": [],
+        "Base_Goerli": [],
+        "Polygon": ["https://imagedelivery.net/PCnTHRkdRhGodr0AWBAvMA/Assets/blockchains/polygon"],
         "Mumbai": ["https://imagedelivery.net/PCnTHRkdRhGodr0AWBAvMA/Assets/blockchains/polygon"],
         "Arbitrum": ["https://imagedelivery.net/PCnTHRkdRhGodr0AWBAvMA/Assets/blockchains/arbitrum"],
         "Arbitrum_Rinkeby": [],
@@ -22,7 +24,10 @@
         "Aurora": ["https://imagedelivery.net/PCnTHRkdRhGodr0AWBAvMA/Assets/blockchains/aurora"],
         "Aurora_Testnet": [],
         "Conflux": ["https://imagedelivery.net/PCnTHRkdRhGodr0AWBAvMA/Assets/blockchains/conflux"],
-        "Astar": ["https://imagedelivery.net/PCnTHRkdRhGodr0AWBAvMA/Assets/blockchains/astar"]
+        "Astar": ["https://imagedelivery.net/PCnTHRkdRhGodr0AWBAvMA/Assets/blockchains/astar"],
+        "Scroll": ["https://imagedelivery.net/PCnTHRkdRhGodr0AWBAvMA/Assets/blockchains/scroll"],
+        "Metis": ["https://imagedelivery.net/PCnTHRkdRhGodr0AWBAvMA/Assets/blockchains/metis"],
+        "Sei": ["https://imagedelivery.net/PCnTHRkdRhGodr0AWBAvMA/Assets/blockchains/sei"]
     },
     "ERC20_TOKEN_ASSET_BASE_URI": {
         "Mainnet": ["https://imagedelivery.net/PCnTHRkdRhGodr0AWBAvMA/Assets/blockchains/ethereum/assets"],
@@ -32,7 +37,9 @@
         "Gorli": ["https://imagedelivery.net/PCnTHRkdRhGodr0AWBAvMA/Assets/blockchains/gorli/assets"],
         "BSC": ["https://imagedelivery.net/PCnTHRkdRhGodr0AWBAvMA/Assets/blockchains/bnb/assets"],
         "BSCT": ["https://imagedelivery.net/PCnTHRkdRhGodr0AWBAvMA/Assets/blockchains/chapel/assets"],
-        "Matic": ["https://imagedelivery.net/PCnTHRkdRhGodr0AWBAvMA/Assets/blockchains/polygon/assets"],
+        "Base": ["https://imagedelivery.net/PCnTHRkdRhGodr0AWBAvMA/Assets/blockchains/base/assets"],
+        "Base_Goerli": [],
+        "Polygon": ["https://imagedelivery.net/PCnTHRkdRhGodr0AWBAvMA/Assets/blockchains/polygon/assets"],
         "Mumbai": ["https://imagedelivery.net/PCnTHRkdRhGodr0AWBAvMA/Assets/blockchains/mumbai/assets"],
         "Arbitrum": ["https://imagedelivery.net/PCnTHRkdRhGodr0AWBAvMA/Assets/blockchains/arbitrum/assets"],
         "Arbitrum_Rinkeby": [],
@@ -47,6 +54,9 @@
         "Aurora": ["https://imagedelivery.net/PCnTHRkdRhGodr0AWBAvMA/Assets/blockchains/aurora/assets"],
         "Aurora_Testnet": [],
         "Conflux": ["https://imagedelivery.net/PCnTHRkdRhGodr0AWBAvMA/Assets/blockchains/conflux/assets"],
-        "Astar": ["https://imagedelivery.net/PCnTHRkdRhGodr0AWBAvMA/Assets/blockchains/astar/assets"]
+        "Astar": ["https://imagedelivery.net/PCnTHRkdRhGodr0AWBAvMA/Assets/blockchains/astar/assets"],
+        "Scroll": ["https://imagedelivery.net/PCnTHRkdRhGodr0AWBAvMA/Assets/blockchains/scroll/assets"],
+        "Metis": ["https://imagedelivery.net/PCnTHRkdRhGodr0AWBAvMA/Assets/blockchains/metis/assets"],
+        "Sei": ["https://imagedelivery.net/PCnTHRkdRhGodr0AWBAvMA/Assets/blockchains/sei/assets"]
     }
 }

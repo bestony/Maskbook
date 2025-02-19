@@ -5,6 +5,8 @@ on:
     branches: [master, develop, released, hotfix/*, release/*]
   pull_request:
     branches: [master, develop, released, hotfix/*, release/*]
+  merge_group:
+    types: [checks_requested]
 
 permissions:
   contents: read
@@ -15,32 +17,84 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  codegen:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".node-version"
+          cache: "pnpm"
+      - name: Authenticate NPM
+        uses: DimensionDev/github-token-action@latest
+        with:
+            registry: true
+      - run: git config --global url."https://github.com/".insteadOf git@github.com
+      - run: pnpm install
+      - run: npx gulp lint-package-json
+      - uses: EndBug/add-and-commit@v9
+        with:
+          message: 'fix: package.json'
+      - run: npx gulp codegen
+      - run: pnpm run lingui:extract
+      - run: pnpm run lingui:compile
+      - uses: EndBug/add-and-commit@v9
+        with:
+          message: 'fix: run codegen'
+      - run: npx gulp sync-languages
+      - uses: EndBug/add-and-commit@v9
+        with:
+          message: 'fix: run sync-languages'
+      - run: npx gulp fix-plugins-tsconfig
+      - uses: EndBug/add-and-commit@v9
+        with:
+          message: 'fix: packages/plugins/tsconfig.json'
   prettier:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-      - run: npx prettier@2.8.4 --check .
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+      - uses: actions/setup-node@v4
+      - run: npx prettier@3.4.1 --write .
+      - uses: EndBug/add-and-commit@v9
+        with:
+          message: 'fix: prettier'
   markdownlint:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-      - run: npx markdownlint-cli .
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+      - uses: actions/setup-node@v4
+      - run: npx markdownlint-cli --fix .
+      - uses: EndBug/add-and-commit@v9
+        with:
+          message: 'fix: markdownlint'
   anti-trojan-source:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
       - run: npx anti-trojan-source --files='packages/**/src/**/*.{ts,tsx,js}'
   type-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: pnpm/action-setup@v2
-      - uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: "18"
+          node-version-file: ".node-version"
           cache: "pnpm"
       - name: Authenticate NPM
         uses: DimensionDev/github-token-action@latest
@@ -53,11 +107,11 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: pnpm/action-setup@v2
-      - uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: "18"
+          node-version-file: ".node-version"
           cache: "pnpm"
       - name: Authenticate NPM
         uses: DimensionDev/github-token-action@latest
@@ -70,12 +124,17 @@ jobs:
       - run: pnpm run test
   eslint:
     runs-on: ubuntu-latest
+    permissions:
+      packages: read
+      contents: write
     steps:
-      - uses: actions/checkout@v3
-      - uses: pnpm/action-setup@v2.2.1
-      - uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
         with:
-          node-version: "18"
+          ref: ${{ github.event.pull_request.head.ref }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".node-version"
           cache: "pnpm"
       - name: Authenticate NPM
         uses: DimensionDev/github-token-action@latest
@@ -83,23 +142,28 @@ jobs:
             registry: true
       - name: Get cache date
         id: get-date
-        run: echo "::set-output name=date::$(/bin/date -u "+%Y%m%d")"
+        run: echo "date=$(/bin/date -u "+%Y%m%d")" >> $GITHUB_STATE
         shell: bash
       - name: Restore ESLint cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
-          path: ./.eslintcache
-          key: linter-${{ steps.get-date.outputs.date }}
-          restore-keys: linter-
+          path: .eslintcache
+          key: linter-v2-${{ steps.get-date.outputs.date }}
+          restore-keys: linter-v2-
       - run: git config --global url."https://github.com/".insteadOf git@github.com
       - run: pnpm install
+      - run: npx gulp codegen
       - name: Run Eslint
         run: |
-          # report to stdio and to file, it's cached, the second run should be fast
+          export NODE_OPTIONS="--max-old-space-size=8192"
+          # report to stdio and to a file, it's cached so the second run should be fast
           pnpm run lint:ci
           pnpm run lint:ci-report
+      - uses: EndBug/add-and-commit@v9
+        with:
+          message: 'fix: eslint'
       - name: Upload eslint report
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: eslint
           path: reports/junit

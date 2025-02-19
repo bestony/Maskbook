@@ -1,24 +1,31 @@
+import { compact, noop, pick } from 'lodash-es'
+import { useCallback, useState } from 'react'
+import { Button, MenuItem, Typography, alpha } from '@mui/material'
 import type { NetworkPluginID } from '@masknet/shared-base'
-import { makeStyles } from '@masknet/theme'
+import { makeStyles, RadioIndicator } from '@masknet/theme'
+import { formatBalance, isLessThan, isSameAddress } from '@masknet/web3-shared-base'
 import { useChainContext, useFungibleToken, useMaskTokenAddress, useNativeToken } from '@masknet/web3-hooks-base'
 import { useERC20TokenAllowance } from '@masknet/web3-hooks-evm'
-import { formatBalance, isLessThan, isSameAddress } from '@masknet/web3-shared-base'
 import { useSmartPayConstants } from '@masknet/web3-shared-evm'
-import { Button, MenuItem, Radio as MuiRadio, type RadioProps, Typography } from '@mui/material'
-import { compact, noop } from 'lodash-es'
-import { useCallback, useState } from 'react'
-import { TokenIcon, useSharedI18N } from '../index.js'
 import { useMenuConfig } from './useMenu.js'
+import { TokenIcon } from '../index.js'
+import { Trans } from '@lingui/react/macro'
 
 const useStyles = makeStyles()((theme) => ({
     paper: {
         minWidth: 240,
         background: theme.palette.maskColor.bottom,
+        borderRadius: 16,
+        boxShadow: theme.palette.maskColor.bottomBg,
+        padding: theme.spacing(0.5),
     },
     item: {
         display: 'flex',
+        height: 46,
         justifyContent: 'space-between',
         alignItems: 'center',
+        borderRadius: 8,
+        padding: theme.spacing(1),
     },
     token: {
         display: 'flex',
@@ -28,26 +35,26 @@ const useStyles = makeStyles()((theme) => ({
         fontWeight: 700,
         lineHeight: '20px',
     },
+    radio: {
+        color: theme.palette.mode === 'dark' ? alpha(theme.palette.maskColor.line, 0.43) : theme.palette.maskColor.line,
+    },
 }))
 
 export function useGasCurrencyMenu(
     pluginId?: NetworkPluginID,
     onCurrencyChange?: (address: string) => void,
     selectedAddress?: string,
-    // TODO: remove this after override popups theme
-    Radio: React.ComponentType<RadioProps> = MuiRadio,
     handleUnlock?: () => void,
 ) {
-    const sharedI18N = useSharedI18N()
     const { classes } = useStyles()
     const { chainId } = useChainContext()
     const [current, setCurrent] = useState('')
-    const { value: nativeToken } = useNativeToken(pluginId)
+    const { data: nativeToken } = useNativeToken(pluginId)
     const maskAddress = useMaskTokenAddress(pluginId)
-    const { value: maskToken } = useFungibleToken(pluginId, maskAddress)
+    const { data: maskToken } = useFungibleToken(pluginId, maskAddress)
 
     const { PAYMASTER_MASK_CONTRACT_ADDRESS } = useSmartPayConstants(chainId)
-    const { value: allowance = '0' } = useERC20TokenAllowance(maskAddress, PAYMASTER_MASK_CONTRACT_ADDRESS)
+    const { data: allowance = '0' } = useERC20TokenAllowance(maskAddress, PAYMASTER_MASK_CONTRACT_ADDRESS)
     const availableBalanceTooLow = isLessThan(formatBalance(allowance, maskToken?.decimals), 0.1)
 
     const handleChange = useCallback(
@@ -62,32 +69,40 @@ export function useGasCurrencyMenu(
 
     return useMenuConfig(
         compact([
-            nativeToken ? (
-                <MenuItem className={classes.item} onClick={() => handleChange(nativeToken.address)}>
-                    <Typography className={classes.token}>
-                        <TokenIcon {...nativeToken} size={30} />
+            nativeToken ?
+                <MenuItem className={classes.item} disableRipple onClick={() => handleChange(nativeToken.address)}>
+                    <Typography className={classes.token} component="div">
+                        <TokenIcon {...pick(nativeToken, 'chainId', 'address', 'symbol')} size={30} disableBadge />
                         {nativeToken.symbol}
                     </Typography>
-                    <Radio checked={isSameAddress(selected, nativeToken.address)} />
+                    <RadioIndicator
+                        size={20}
+                        checked={isSameAddress(selected, nativeToken.address)}
+                        className={classes.radio}
+                    />
                 </MenuItem>
-            ) : null,
-            maskToken ? (
+            :   null,
+            maskToken ?
                 <MenuItem
                     className={classes.item}
+                    disableRipple
                     onClick={!availableBalanceTooLow ? () => handleChange(maskToken.address) : noop}>
-                    <Typography className={classes.token}>
-                        <TokenIcon {...maskToken} size={30} />
+                    <Typography className={classes.token} component="div">
+                        <TokenIcon {...pick(maskToken, 'chainId', 'address', 'symbol')} size={30} disableBadge />
                         {maskToken.symbol}
                     </Typography>
-                    {availableBalanceTooLow ? (
+                    {availableBalanceTooLow ?
                         <Button variant="roundedContained" onClick={handleUnlock} size="small">
-                            {sharedI18N.unlock()}
+                            <Trans>Unlock</Trans>
                         </Button>
-                    ) : (
-                        <Radio checked={isSameAddress(selected, maskAddress)} />
-                    )}
+                    :   <RadioIndicator
+                            size={20}
+                            className={classes.radio}
+                            checked={isSameAddress(selected, maskAddress)}
+                        />
+                    }
                 </MenuItem>
-            ) : null,
+            :   null,
         ]),
         {
             classes: {
@@ -95,7 +110,7 @@ export function useGasCurrencyMenu(
             },
             anchorOrigin: {
                 vertical: 'bottom',
-                horizontal: 'center',
+                horizontal: 'right',
             },
             transformOrigin: {
                 vertical: 'top',

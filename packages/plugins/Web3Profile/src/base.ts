@@ -1,6 +1,7 @@
-import { CurrentSNSNetwork, type Plugin } from '@masknet/plugin-infra'
+import type { Plugin } from '@masknet/plugin-infra'
 import { PLUGIN_DESCRIPTION, PLUGIN_ID, PLUGIN_NAME } from './constants.js'
-import { languages } from './locales/languages.js'
+import { EnhanceableSite } from '@masknet/shared-base'
+import { languages } from './locale/languages.js'
 
 export const base: Plugin.Shared.Definition = {
     ID: PLUGIN_ID,
@@ -8,12 +9,10 @@ export const base: Plugin.Shared.Definition = {
     description: { fallback: PLUGIN_DESCRIPTION },
     publisher: { name: { fallback: '' }, link: '' },
     enableRequirement: {
-        networks: {
+        supports: {
             type: 'opt-in',
-            networks: {
-                [CurrentSNSNetwork.Twitter]: true,
-                [CurrentSNSNetwork.Facebook]: false,
-                [CurrentSNSNetwork.Instagram]: false,
+            sites: {
+                [EnhanceableSite.Twitter]: true,
             },
         },
         target: 'stable',

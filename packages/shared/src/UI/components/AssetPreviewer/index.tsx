@@ -1,5 +1,6 @@
 import { makeStyles } from '@masknet/theme'
 import { Image } from '../Image/index.js'
+import type { JSX } from 'react'
 
 const useStyles = makeStyles()((theme) => ({
     root: {
@@ -13,14 +14,14 @@ const useStyles = makeStyles()((theme) => ({
     },
     icon: {
         position: 'absolute',
-        top: theme.spacing(1.5),
-        right: theme.spacing(1.5),
+        top: theme.spacing(0.5),
+        left: theme.spacing(0.5),
     },
 }))
 
 export interface AssetPreviewerProps extends withClasses<'root' | 'fallbackImage' | 'container'> {
     url?: string
-    fallbackImage?: URL | JSX.Element
+    fallbackImage?: JSX.Element | string
     icon?: React.ReactNode
 }
 
@@ -42,7 +43,9 @@ export function AssetPreviewer(props: AssetPreviewerProps) {
                 src={url}
                 fallback={fallbackImage}
             />
-            <div className={classes.icon}>{icon}</div>
+            {icon ?
+                <div className={classes.icon}>{icon}</div>
+            :   null}
         </div>
     )
 }

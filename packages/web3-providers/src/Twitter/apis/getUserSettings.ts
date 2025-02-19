@@ -1,5 +1,5 @@
 import { hexToRgb } from '@mui/material'
-import { getStore } from './getDatabase.js'
+import { getObjectStore } from './getObjectStore.js'
 import { TwitterBaseAPI } from '../../entry-types.js'
 
 /* cspell:disable-next-line */
@@ -8,10 +8,10 @@ const STORE_NAME = 'keyvaluepairs'
 const KEY_NAME = 'device:rweb.settings'
 
 export async function getUserSettings() {
-    const store = await getStore(STORE_NAME)
+    const store = await getObjectStore(STORE_NAME)
     const query = store.get(KEY_NAME)
 
-    return new Promise<TwitterBaseAPI.UserSettings | undefined>(async (resolve, reject) => {
+    return new Promise<TwitterBaseAPI.UserSettings | undefined>((resolve, reject) => {
         query.addEventListener('success', (event) => {
             if (!event.target) reject('Failed to get user settings.')
 
@@ -56,7 +56,7 @@ export function getComputedUserSettings(): TwitterBaseAPI.UserSettings {
     }
 
     const getThemeColor = () => {
-        const tweetButton = document.querySelector('a[href="/compose/tweet"][data-testid="SideNav_NewTweet_Button"]')
+        const tweetButton = document.querySelector('a[href="/compose/post"][data-testid="SideNav_NewTweet_Button"]')
         if (!tweetButton) return
 
         const { backgroundColor } = getComputedStyle(tweetButton)

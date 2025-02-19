@@ -1,14 +1,57 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState, type HTMLProps } from 'react'
 import { FixedSizeList, type FixedSizeListProps, type ListChildComponentProps } from 'react-window'
 import Fuse from 'fuse.js'
 import { uniqBy } from 'lodash-es'
-import { Box, Stack } from '@mui/material'
+import { Box, Stack, Typography, useTheme } from '@mui/material'
 import { makeStyles } from '../../UIHelper/index.js'
 import { MaskTextField, type MaskTextFieldProps } from '../TextField/index.js'
 import { Icons } from '@masknet/icons'
 import { EmptyResult } from './EmptyResult.js'
+import { LoadingBase } from '../LoadingBase/index.js'
 
-export interface MaskSearchableListProps<T> extends withClasses<'listBox'> {
+const useStyles = makeStyles()((theme) => ({
+    container: {
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'visible',
+        gap: theme.spacing(2),
+    },
+    listBox: {
+        flexGrow: 1,
+        minHeight: 0,
+        overflow: 'auto',
+        '& > div': {
+            scrollbarWidth: 'none',
+        },
+        '& > div::-webkit-scrollbar': {
+            backgroundColor: 'transparent',
+            width: 0,
+        },
+        '& > div::-webkit-scrollbar-thumb': {
+            borderRadius: '20px',
+            width: 5,
+            border: '7px solid rgba(0, 0, 0, 0)',
+            backgroundColor: theme.palette.maskColor.secondaryLine,
+            backgroundClip: 'padding-box',
+        },
+        '& > div > div': {
+            position: 'relative',
+            margin: 'auto',
+        },
+    },
+    list: {
+        scrollbarWidth: 'none',
+    },
+    error: {
+        backgroundColor: theme.palette.maskColor.bottom,
+        fontSize: 14,
+        color: theme.palette.maskColor.danger,
+    },
+}))
+
+export interface MaskSearchableListProps<T>
+    extends withClasses<'listBox' | 'searchInput'>,
+        Omit<HTMLProps<HTMLDivElement>, 'data' | 'onSelect'> {
     /** The list data should be render */
     data: T[]
     /** The identity of list data item for remove duplicates item */
@@ -27,6 +70,7 @@ export interface MaskSearchableListProps<T> extends withClasses<'listBox'> {
     SearchFieldProps?: MaskTextFieldProps
     /** Show search bar */
     disableSearch?: boolean
+    loading?: boolean
 }
 
 /**
@@ -45,38 +89,45 @@ export interface MaskSearchableListProps<T> extends withClasses<'listBox'> {
  *           itemRender={ListItem}
  *      />
  * )
+ * @todo
+ * Move to `shared` package, so that we can use LoadingStatus and EmptyStatus inside.
  */
-export function SearchableList<T extends {}>({
+export function SearchableList<T extends object>({
     itemKey,
     data,
     onSelect,
     onSearch,
     disableSearch,
+    loading,
     searchKey,
     itemRender,
-    FixedSizeListProps = {},
+    FixedSizeListProps,
     SearchFieldProps,
     ...props
 }: MaskSearchableListProps<T>) {
     const [keyword, setKeyword] = useState('')
-    const { classes } = useStyles(undefined, { props: { classes: props.classes } })
-    const { height = 300, itemSize, ...rest } = FixedSizeListProps
+    const theme = useTheme()
+    const { classes, cx } = useStyles(undefined, { props })
+    const { height = 300, itemSize, ...rest } = FixedSizeListProps || {}
     const { InputProps, ...textFieldPropsRest } = SearchFieldProps ?? {}
 
-    // #region create searched data
-    const readyToRenderData = useMemo(() => {
-        if (!keyword) return data
-
-        const fuse = new Fuse(data, {
+    const fuse = useMemo(() => {
+        return new Fuse(data, {
             shouldSort: true,
             isCaseSensitive: false,
             threshold: 0.45,
             minMatchCharLength: 1,
             keys: searchKey ?? Object.keys(data.length > 0 ? data[0] : []),
         })
+    }, [searchKey, data])
+
+    // #region create searched data
+    const readyToRenderData = useMemo(() => {
+        if (!keyword) return data
+
         const filtered = fuse.search(keyword).map((x: any) => x.item)
         return itemKey ? uniqBy(filtered, (x) => x[itemKey]) : filtered
-    }, [keyword, JSON.stringify(data)])
+    }, [keyword, fuse, data])
     // #endregion
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -107,9 +158,9 @@ export function SearchableList<T extends {}>({
     const windowHeight = !!textFieldPropsRest.error && typeof height === 'number' ? height - 28 : height
 
     return (
-        <div className={classes.container}>
+        <div className={cx(classes.container, props.className)}>
             {!disableSearch && (
-                <Box>
+                <Box className={classes.searchInput}>
                     <MaskTextField
                         value={keyword}
                         placeholder="Search"
@@ -119,15 +170,38 @@ export function SearchableList<T extends {}>({
                             style: { height: 40 },
                             inputProps: { style: { paddingLeft: 4 } },
                             startAdornment: <Icons.Search size={18} />,
-                            endAdornment: keyword ? <Icons.Close size={18} onClick={handleClear} /> : null,
+                            endAdornment:
+                                keyword ?
+                                    <Icons.Close
+                                        size={18}
+                                        onClick={handleClear}
+                                        color={textFieldPropsRest.error ? theme.palette.maskColor.danger : undefined}
+                                    />
+                                :   null,
                             ...InputProps,
                         }}
                         onChange={handleChange}
                         {...textFieldPropsRest}
                     />
+                    {textFieldPropsRest.error ?
+                        <Typography className={classes.error} mt={0.5}>
+                            {textFieldPropsRest.helperText}
+                        </Typography>
+                    :   null}
                 </Box>
             )}
-            {readyToRenderData.length === 0 && (
+            {loading ?
+                <Stack
+                    height={windowHeight}
+                    justifyContent="center"
+                    alignItems="center"
+                    width="100%"
+                    alignContent="center"
+                    marginTop="18px"
+                    marginBottom="48px">
+                    <LoadingBase />
+                </Stack>
+            : readyToRenderData.length === 0 ?
                 <Stack
                     height={windowHeight}
                     justifyContent="center"
@@ -136,54 +210,26 @@ export function SearchableList<T extends {}>({
                     marginBottom="48px">
                     <EmptyResult />
                 </Stack>
-            )}
-            {readyToRenderData.length !== 0 && (
-                <div className={classes.listBox}>
+            :   <div className={classes.listBox}>
                     <FixedSizeList
                         className={classes.list}
                         width="100%"
                         height={windowHeight}
-                        overscanCount={25}
+                        overscanCount={15}
                         itemSize={itemSize ?? 100}
                         itemData={{
                             dataSet: readyToRenderData,
                             onSelect,
                         }}
-                        itemKey={(index, data) => getItemKey(index, data)}
+                        itemKey={getItemKey}
                         itemCount={readyToRenderData.length}
                         {...rest}>
                         {itemRender}
                     </FixedSizeList>
                 </div>
-            )}
+            }
         </div>
     )
 }
-
-const useStyles = makeStyles()((theme) => ({
-    container: {
-        overflow: 'visible',
-    },
-    listBox: {
-        '& > div::-webkit-scrollbar': {
-            backgroundColor: 'transparent',
-            width: 0,
-        },
-        '& > div::-webkit-scrollbar-thumb': {
-            borderRadius: '20px',
-            width: 5,
-            border: '7px solid rgba(0, 0, 0, 0)',
-            backgroundColor: theme.palette.maskColor.secondaryLine,
-            backgroundClip: 'padding-box',
-        },
-        '& > div > div': {
-            position: 'relative',
-            margin: 'auto',
-        },
-    },
-    list: {
-        scrollbarWidth: 'thin',
-    },
-}))
 
 export interface MaskFixedSizeListProps extends FixedSizeListProps {}

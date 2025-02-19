@@ -8,28 +8,15 @@
 
 ## Supporting browsers
 
-- Chrome Last 2 versions (about 3 months)
-- Firefox Last 2 versions (about 3 months)
+- Chrome 115 (about 1 year)
+- Firefox latest (not releasing)
+- Safari latest (not releasing)
 
 ## Targeting ES Syntax and APIs
 
-- Syntax: ES2022
-- Library: ES2022 (with [core-js](https://github.com/zloirock/core-js)).
-
-### Caution
-
-Those features are not easy to polyfill.
-
-- ES2017: SharedArrayBuffer and Atomics
+- Syntax: ES2023
+- Library: ESNext (with [core-js](https://github.com/zloirock/core-js)).
 
 ## Web APIs and Intl APIs
 
 Check and polyfill before using.
-
-### Simply polyfilled
-
-- Intl.ListFormat
-
-### Using polyfill
-
-- navigator.clipboard (with `ClipboardItem`) (Firefox not supported)

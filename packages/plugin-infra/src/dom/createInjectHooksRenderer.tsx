@@ -1,8 +1,12 @@
-import { memo, useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState, type ComponentType, type JSX } from 'react'
 import { ErrorBoundary } from '@masknet/shared-base-ui'
 import { ShadowRootIsolation } from '@masknet/theme'
-import { type PluginWrapperComponent, type PluginWrapperMethods, usePluginI18NField } from './index.js'
-import { PluginWrapperMethodsContext } from './usePluginWrapper.js'
+import {
+    PluginWrapperMethodsContext,
+    type PluginWrapperComponentProps,
+    type PluginWrapperMethods,
+} from './usePluginWrapper.js'
+import { usePluginTransField } from './useTrans.js'
 import type { Plugin } from '../types.js'
 import { getAvailablePlugins } from '../utils/getAvailablePlugins.js'
 
@@ -12,7 +16,7 @@ type Raw<T> = Plugin.InjectUIRaw<T>
 export function createInjectHooksRenderer<PluginDefinition extends Plugin.Shared.Definition, PropsType extends object>(
     usePlugins: () => readonly PluginDefinition[],
     pickInjectorHook: (plugin: PluginDefinition) => undefined | Inject<PropsType>,
-    PluginWrapperComponent?: PluginWrapperComponent<PluginDefinition> | undefined,
+    PluginWrapperComponent?: ComponentType<PluginWrapperComponentProps<PluginDefinition>> | undefined,
     rootElement?: 'div' | 'span' | (() => HTMLDivElement | HTMLSpanElement),
 ) {
     function usePluginWrapperProvider(element: JSX.Element | null, plugin: PluginDefinition) {
@@ -24,25 +28,23 @@ export function createInjectHooksRenderer<PluginDefinition extends Plugin.Shared
                     ref={(methods) => {
                         if (methods) setRef(methods)
                     }}>
-                    {ref ? (
-                        <PluginWrapperMethodsContext.Provider value={ref}>
-                            {element}
-                        </PluginWrapperMethodsContext.Provider>
-                    ) : null}
+                    {ref ?
+                        <PluginWrapperMethodsContext value={ref}>{element}</PluginWrapperMethodsContext>
+                    :   null}
                 </PluginWrapperComponent>
             )
         }
         return element
     }
     function SinglePluginWithinErrorBoundary({ plugin, props }: { plugin: PluginDefinition; props: unknown }) {
-        const t = usePluginI18NField()
+        const t = usePluginTransField()
         const ui = pickInjectorHook(plugin)
         return usePluginWrapperProvider(
-            ui ? (
+            ui ?
                 <ErrorBoundary subject={'Plugin ' + t(plugin.ID, plugin.name)}>
                     <Main UI={ui} data={props} />
                 </ErrorBoundary>
-            ) : null,
+            :   null,
             plugin,
         )
     }
@@ -68,24 +70,25 @@ export function createInjectHooksRenderer<PluginDefinition extends Plugin.Shared
 }
 
 function Main<T>(props: { data: T; UI: Inject<any> }) {
-    const { data, UI } = props
-    if (isRawInjectHook(UI)) return <RawHookRender UI={UI} data={data} />
-    return <UI {...data} />
+    const { data, UI: Render } = props
+    if (isRawInjectHook(Render)) return <RawHookRender UI={Render} data={data} />
+    return <Render {...data} />
 }
 function RawHookRender<T>({ UI, data }: { data: T; UI: Raw<T> }) {
     const [ref, setRef] = useState<HTMLDivElement | null>()
-    const [f, setF] = useState<(props: T) => void>()
-    const cancel = useRef<AbortController>()
+    const propsCallback = useRef<(props: T) => void>(undefined)
+    const cancel = useRef<AbortController>(undefined)
 
     useEffect(() => {
         if (!ref) return
         const sig = (cancel.current = new AbortController())
-        setF(UI.init(sig.signal, ref))
+        propsCallback.current = UI.init(sig.signal, ref)
+        propsCallback.current(data)
         return () => sig.abort()
     }, [ref, UI.init])
     useEffect(() => {
-        f?.(data)
-    }, [f, data])
+        propsCallback.current?.(data)
+    }, [data])
 
     return <div ref={setRef} />
 }

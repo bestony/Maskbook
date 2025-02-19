@@ -1,69 +1,54 @@
-import { type BindingProof, EMPTY_LIST, NextIDPlatform, type PersonaInformation } from '@masknet/shared-base'
-import { LoadingBase, makeStyles } from '@masknet/theme'
-import { Box, DialogActions, DialogContent, Stack, Typography } from '@mui/material'
+import { uniqBy } from 'lodash-es'
 import { useCallback, useMemo, useState } from 'react'
+import { useAsyncRetry } from 'react-use'
+import { useNavigate } from 'react-router-dom'
 import { useSubscription } from 'use-subscription'
-import { context } from '../context.js'
-import { useI18N } from '../locales/index.js'
+import { type BindingProof, EMPTY_LIST, NextIDPlatform } from '@masknet/shared-base'
+import { LoadingBase } from '@masknet/theme'
+import { DialogActions, DialogContent, Stack } from '@mui/material'
+import { Alert, PersonaAction, usePersonasFromNextID } from '@masknet/shared'
+import { isValidAddress } from '@masknet/web3-shared-evm'
+import { useAllPersonas, useLastRecognizedIdentity } from '@masknet/plugin-infra/content-script'
+import { currentPersona, queryPersonaAvatar } from '@masknet/plugin-infra/dom/context'
 import { PersonaItem } from './PersonaItem.js'
 import type { AllChainsNonFungibleToken } from '../types.js'
-import { PersonaAction, usePersonasFromNextID } from '@masknet/shared'
-import { useAsyncRetry } from 'react-use'
-import { isValidAddress } from '@masknet/web3-shared-evm'
-import { Icons } from '@masknet/icons'
-import {
-    useAllPersonas,
-    useLastRecognizedSocialIdentity,
-    useSNSAdaptorContext,
-} from '@masknet/plugin-infra/content-script'
-import { useNavigate } from 'react-router-dom'
 import { RoutePaths } from './Routes.js'
-import { useAvatarManagement } from '../contexts/index.js'
-
-const useStyles = makeStyles()((theme) => ({
-    messageBox: {
-        display: 'flex',
-        borderRadius: 4,
-        padding: 12,
-        backgroundColor: theme.palette.mode === 'dark' ? '#15171A' : '#F9F9F9',
-        fontSize: 14,
-        alignItems: 'center',
-        color: theme.palette.text.primary,
-        gap: 10,
-    },
-}))
+import { useAvatarManagement } from '../contexts/AvatarManagement.js'
+import { Trans } from '@lingui/react/macro'
 
 export function PersonaPage() {
-    const t = useI18N()
-    const { classes } = useStyles()
-    const [visible, setVisible] = useState(true)
     const navigate = useNavigate()
-    const { setProofs, setTokenInfo, setProof } = useAvatarManagement()
-    const { loading, value: socialIdentity } = useLastRecognizedSocialIdentity()
+    const [visible, setVisible] = useState(true)
+    const { setProofs, setTokenInfo, setProof, isPending, binding } = useAvatarManagement()
+
+    const socialIdentity = useLastRecognizedIdentity()
+
     const network = socialIdentity?.identifier?.network.replace('.com', '')
     const userId = socialIdentity?.identifier?.userId
 
-    const { ownProofChanged } = useSNSAdaptorContext()
     const myPersonas = useAllPersonas()
-    const _persona = useSubscription(context.currentPersona)
-    const currentPersona = myPersonas?.find(
-        (x: PersonaInformation) => x.identifier.rawPublicKey.toLowerCase() === _persona?.rawPublicKey.toLowerCase(),
+    const currentPersonaIdentifier = useSubscription(currentPersona)
+    const currentPersonaInfo = myPersonas?.find(
+        (x) => x.identifier.rawPublicKey.toLowerCase() === currentPersonaIdentifier?.rawPublicKey.toLowerCase(),
     )
 
-    const { value: bindingPersonas = EMPTY_LIST } = usePersonasFromNextID(
-        _persona?.publicKeyAsHex ?? '',
+    const { data: bindingPersonas = EMPTY_LIST } = usePersonasFromNextID(
+        currentPersonaIdentifier?.publicKeyAsHex ?? '',
         NextIDPlatform.NextID,
-        ownProofChanged,
-        true,
+        false,
     )
 
     const bindingProofs = useMemo(
-        () => bindingPersonas.map((x) => x.proofs.filter((y) => y.is_valid && y.platform === network)).flat(),
+        () =>
+            uniqBy(
+                bindingPersonas.flatMap((x) => x.proofs.filter((y) => y.is_valid && y.platform === network)),
+                'identity',
+            ),
         [bindingPersonas, network],
     )
     const handleSelect = useCallback(
         (proof: BindingProof, tokenInfo?: AllChainsNonFungibleToken) => {
-            const proofs = socialIdentity?.binding?.proofs.filter(
+            const proofs = binding?.proofs.filter(
                 (x) => x.platform === NextIDPlatform.Ethereum && isValidAddress(x.identity),
             )
             setProofs(proofs ?? EMPTY_LIST)
@@ -73,35 +58,34 @@ export function PersonaPage() {
         },
         [navigate],
     )
-    const { value: avatar } = useAsyncRetry(async () => context.getPersonaAvatar(currentPersona?.identifier), [])
+    const { value: avatar } = useAsyncRetry(
+        async () => queryPersonaAvatar(currentPersonaIdentifier),
+        [currentPersonaIdentifier],
+    )
 
     return (
         <>
-            <DialogContent sx={{ flex: 1, height: 464, padding: 2 }}>
-                {loading ? (
+            <DialogContent sx={{ height: 464, padding: 2 }}>
+                {isPending ?
                     <Stack justifyContent="center" alignItems="center" height="100%">
                         <LoadingBase />
                     </Stack>
-                ) : (
-                    <>
-                        {visible ? (
-                            <Box className={classes.messageBox}>
-                                <Icons.Info size={20} />
-                                <Typography fontSize={14} fontFamily="Helvetica">
-                                    {t.persona_hint()}
-                                </Typography>
-                                <Icons.Close size={20} onClick={() => setVisible(true)} />
-                            </Box>
-                        ) : null}
+                :   <>
+                        <Alert open={visible} onClose={() => setVisible(false)}>
+                            <Trans>
+                                Customize NFT experience by connecting social accounts. Enjoy Web2 with a whole new Web3
+                                vibe.
+                            </Trans>
+                        </Alert>
                         {bindingProofs
                             .filter((x) => x.identity.toLowerCase() === userId?.toLowerCase())
                             .map((x, i) => (
                                 <PersonaItem
-                                    persona={socialIdentity!.binding?.persona}
+                                    persona={binding?.persona}
                                     key={`avatar${i}`}
-                                    avatar={socialIdentity!.avatar ?? ''}
-                                    owner
-                                    nickname={socialIdentity!.nickname}
+                                    isOwner
+                                    avatarUrl={socialIdentity?.avatar}
+                                    nickname={socialIdentity?.nickname}
                                     proof={x}
                                     userId={userId ?? x.identity}
                                     onSelect={handleSelect}
@@ -111,30 +95,26 @@ export function PersonaPage() {
                         {myPersonas[0].linkedProfiles
                             .filter((x) => x.identifier.network === network)
                             .map((x, i) =>
-                                socialIdentity?.binding?.proofs.some(
-                                    (y) => y.identity.toLowerCase() === x.identifier.userId.toLowerCase(),
-                                ) ? null : (
-                                    <PersonaItem avatar="" key={`persona${i}`} userId={x.identifier.userId} />
-                                ),
+                                (
+                                    binding?.proofs.some(
+                                        (y) => y.identity.toLowerCase() === x.identifier.userId.toLowerCase(),
+                                    )
+                                ) ?
+                                    null
+                                :   <PersonaItem key={`persona${i}`} userId={x.identifier.userId} />,
                             )}
                         {bindingProofs
                             .filter((x) => x.identity.toLowerCase() !== userId?.toLowerCase())
                             .map((x, i) => (
-                                <PersonaItem
-                                    key={i}
-                                    persona={socialIdentity!.binding?.persona}
-                                    avatar=""
-                                    userId={x.identity}
-                                    proof={x}
-                                />
+                                <PersonaItem key={i} persona={binding?.persona} userId={x.identity} proof={x} />
                             ))}
                     </>
-                )}
+                }
             </DialogContent>
             <DialogActions style={{ padding: 0, margin: 0 }}>
                 <PersonaAction
                     avatar={avatar === null ? undefined : avatar}
-                    currentPersona={currentPersona}
+                    currentPersona={currentPersonaInfo}
                     currentVisitingProfile={socialIdentity}
                 />
             </DialogActions>

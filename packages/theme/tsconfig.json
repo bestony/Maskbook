@@ -2,9 +2,9 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "rootDir": "./src",
-    "outDir": "./dist/src/",
-    "tsBuildInfoFile": "./dist/src.tsbuildinfo"
+    "outDir": "./dist/",
+    "tsBuildInfoFile": "./dist/.tsbuildinfo"
   },
-  "include": ["./src"],
-  "references": [{ "path": "../shared-base" }]
+  "include": ["./src", "./src/**/*.json"],
+  "references": [{ "path": "../shared-base/tsconfig.json" }, { "path": "../flags/tsconfig.json" }]
 }

@@ -1,31 +1,77 @@
 import type { NormalizedBackup } from '@masknet/backup-format'
-import { currySameAddress, HD_PATH_WITHOUT_INDEX_ETHEREUM } from '@masknet/web3-shared-base'
 import { concatArrayBuffer } from '@masknet/kit'
+import { fromBase64URL, isK256Point, isK256PrivateKey, type EC_JsonWebKey } from '@masknet/shared-base'
+import { ChainbaseDomain } from '@masknet/web3-providers'
+import { HD_PATH_WITHOUT_INDEX_ETHEREUM, currySameAddress, generateNewWalletName } from '@masknet/web3-shared-base'
 import { ec as EC } from 'elliptic'
-import { fromBase64URL, type EC_JsonWebKey, isK256Point, isK256PrivateKey } from '@masknet/shared-base'
-import { provider } from './internal_wallet.js'
+import {
+    getDerivableAccounts,
+    createMnemonicId,
+    getWallets,
+    recoverWalletFromMnemonicWords,
+    recoverWalletFromPrivateKey,
+} from '../wallet/services/index.js'
+import { ChainId, formatEthereumAddress } from '@masknet/web3-shared-evm'
 
 export async function internal_wallet_restore(backup: NormalizedBackup.WalletBackup[]) {
-    const password = await provider.INTERNAL_getPasswordRequired()
+    const mnemonicWalletMap = new Map<
+        string,
+        {
+            mnemonicId: string
+            derivationPath: string
+        }
+    >()
+    if (backup.some((x) => !!x.mnemonic.isSome())) {
+        const mnemonicWallets = backup.filter((x) => !!x.mnemonic.isSome())
+        for (const wallet of mnemonicWallets) {
+            if (wallet.mnemonic.isSome()) {
+                const accounts = await getDerivableAccounts(wallet.mnemonic.value.words, 0, 10)
+                const mnemonicId = await createMnemonicId(wallet.mnemonic.value.words)
+                if (!mnemonicId) continue
+
+                accounts.forEach((x) => {
+                    mnemonicWalletMap.set(formatEthereumAddress(x.address), {
+                        mnemonicId,
+                        derivationPath: x.derivationPath,
+                    })
+                })
+            }
+        }
+    }
+
     for (const wallet of backup) {
         try {
-            const name = wallet.name
-
-            if (wallet.privateKey.some)
-                await provider.recoverWalletFromPrivateKey(
-                    name,
-                    await JWKToKey(wallet.privateKey.val, 'private'),
-                    password,
+            const wallets = await getWallets()
+            const matchedDefaultNameFormat = wallet.name.match(/Wallet (\d+)/)
+            const digitIndex = matchedDefaultNameFormat?.[1]
+            let name = wallet.name
+            if (!name) {
+                const ens = await ChainbaseDomain.reverse(ChainId.Mainnet, wallet.address)
+                if (ens) name = ens
+            }
+            if (!name) {
+                name = generateNewWalletName(
+                    wallets,
+                    undefined,
+                    digitIndex && !Number.isNaN(digitIndex) ? Number(digitIndex) : undefined,
                 )
-            else if (wallet.mnemonic.some) {
-                // fix a backup bug of pre-v2.2.2 versions
-                const accounts = await provider.getDerivableAccounts(wallet.mnemonic.val.words, 1, 5)
-                const index = accounts.findIndex(currySameAddress(wallet.address))
-                await provider.recoverWalletFromMnemonic(
+            }
+            if (wallet.privateKey.isSome()) {
+                const info = mnemonicWalletMap.get(wallet.address)
+                await recoverWalletFromPrivateKey(
                     name,
-                    wallet.mnemonic.val.words,
-                    index > -1 ? `${HD_PATH_WITHOUT_INDEX_ETHEREUM}/${index}` : wallet.mnemonic.val.path,
-                    password,
+                    await JWKToKey(wallet.privateKey.value, 'private'),
+                    wallet.mnemonicId.unwrapOr(undefined) ?? info?.mnemonicId,
+                    wallet.derivationPath.unwrapOr(undefined) ?? info?.derivationPath,
+                )
+            } else if (wallet.mnemonic.isSome()) {
+                // fix a backup bug of pre-v2.2.2 versions
+                const accounts = await getDerivableAccounts(wallet.mnemonic.value.words, 1, 5)
+                const index = accounts.findIndex(currySameAddress(wallet.address))
+                await recoverWalletFromMnemonicWords(
+                    name,
+                    wallet.mnemonic.value.words,
+                    index !== -1 ? `${HD_PATH_WITHOUT_INDEX_ETHEREUM}/${index}` : wallet.mnemonic.value.path,
                 )
             }
         } catch (error) {

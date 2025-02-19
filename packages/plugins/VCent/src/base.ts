@@ -1,6 +1,7 @@
 import type { Plugin } from '@masknet/plugin-infra'
 import { PLUGIN_ID, PLUGIN_NAME, PLUGIN_DESCRIPTION } from './constants.js'
-import { languages } from './locales/languages.js'
+import { EnhanceableSite } from '@masknet/shared-base'
+import { languages } from './locale/languages.js'
 
 export const base: Plugin.Shared.Definition = {
     ID: PLUGIN_ID,
@@ -8,8 +9,14 @@ export const base: Plugin.Shared.Definition = {
     description: { fallback: PLUGIN_DESCRIPTION },
     publisher: { name: { fallback: 'rob-low' }, link: 'https://github.com/rob-lw' },
     enableRequirement: {
-        networks: { type: 'opt-out', networks: {} },
+        supports: {
+            type: 'opt-in',
+            sites: {
+                [EnhanceableSite.Twitter]: true,
+            },
+        },
         target: 'stable',
     },
     i18n: languages,
+    inMinimalModeByDefault: true,
 }

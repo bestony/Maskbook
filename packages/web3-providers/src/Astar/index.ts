@@ -1,13 +1,13 @@
 import { GasOptionType, toFixed } from '@masknet/web3-shared-base'
 import type { ChainId, GasOption } from '@masknet/web3-shared-evm'
+import { fetchJSON } from '../helpers/fetchJSON.js'
 import type { EstimateSuggestResponse } from './types.js'
-import type { GasOptionAPI } from '../entry-types.js'
-import { fetchJSON } from '../entry-helpers.js'
+import type { BaseGasOptions } from '../entry-types.js'
 
 const ASTAR_API = 'https://gas.astar.network/api/gasnow?network=astar'
 
-export class AstarAPI implements GasOptionAPI.Provider<ChainId, GasOption> {
-    async getGasOptions(chainId: ChainId): Promise<Record<GasOptionType, GasOption>> {
+class AstarAPI implements BaseGasOptions.Provider<ChainId, GasOption> {
+    async getGasOptions(): Promise<Record<GasOptionType, GasOption>> {
         const { data: result } = await fetchJSON<{ data: EstimateSuggestResponse }>(ASTAR_API)
 
         const { priorityFeePerGas } = result.eip1559
@@ -31,6 +31,12 @@ export class AstarAPI implements GasOptionAPI.Provider<ChainId, GasOption> {
                 suggestedMaxFeePerGas: toFixed(result.slow ?? 0),
                 suggestedMaxPriorityFeePerGas: toFixed(priorityFeePerGas.slow),
             },
+            [GasOptionType.CUSTOM]: {
+                estimatedSeconds: 0,
+                suggestedMaxFeePerGas: '',
+                suggestedMaxPriorityFeePerGas: '',
+            },
         }
     }
 }
+export const AstarGas = new AstarAPI()

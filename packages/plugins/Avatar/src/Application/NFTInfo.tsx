@@ -1,6 +1,7 @@
 import { Box, Typography } from '@mui/material'
 import { LoadingBase, makeStyles, ShadowRootTooltip } from '@masknet/theme'
-import { useI18N } from '../locales/i18n_generated.js'
+import type { ReactNode } from 'react'
+import { Trans } from '@lingui/react/macro'
 
 const useStyles = makeStyles()(() => ({
     root: {},
@@ -11,26 +12,25 @@ const useStyles = makeStyles()(() => ({
 interface NFTInfoProps {
     isNFT: boolean
     loading?: boolean
-    tooltip?: string
+    tooltip?: ReactNode
 }
 
 export function NFTInfo(props: NFTInfoProps) {
     const { isNFT = false, loading = false, tooltip } = props
     const { classes } = useStyles()
-    const t = useI18N()
 
     if (loading) return <LoadingBase size={24} />
+
     const node = (
         <Box className={classes.root}>
-            {isNFT ? (
+            {isNFT ?
                 <Typography variant="body1" fontWeight={700} fontSize={12}>
-                    {t.nft_set_success()}
+                    <Trans>Set up NFT PFP successfully</Trans>
                 </Typography>
-            ) : (
-                <Typography fontWeight={700} fontSize={12}>
-                    {t.set_nft()}
+            :   <Typography fontWeight={700} fontSize={12}>
+                    <Trans>Set NFT PFPs</Trans>
                 </Typography>
-            )}
+            }
         </Box>
     )
     if (!tooltip) return node

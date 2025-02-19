@@ -9,8 +9,8 @@ export interface LinkingProps {
 
 export function Linking(props: LinkingProps) {
     const { href, LinkProps, TypographyProps, children } = props
-    try {
-        const { hostname } = new URL(href ?? '')
+    if (href && URL.canParse(href)) {
+        const { hostname } = new URL(href)
         return (
             <Link
                 color={(theme) => theme.palette.maskColor.main}
@@ -18,25 +18,23 @@ export function Linking(props: LinkingProps) {
                 rel="noopener noreferrer"
                 href={props.href}
                 {...LinkProps}>
-                {children ? (
+                {children ?
                     children
-                ) : (
-                    <Typography variant="body2" component="span" {...TypographyProps}>
+                :   <Typography variant="body2" component="span" {...TypographyProps}>
                         {hostname.replace(/^www./i, '')}
                     </Typography>
-                )}
+                }
             </Link>
         )
-    } catch {
+    } else {
         return (
             <span className={LinkProps?.className} title={LinkProps?.title}>
-                {children ? (
+                {children ?
                     children
-                ) : (
-                    <Typography variant="body2" component="span" {...TypographyProps}>
+                :   <Typography variant="body2" component="span" {...TypographyProps}>
                         {href}
                     </Typography>
-                )}
+                }
             </span>
         )
     }

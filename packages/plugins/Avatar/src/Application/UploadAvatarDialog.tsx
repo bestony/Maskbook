@@ -1,18 +1,20 @@
-import { type FC, useCallback, useState } from 'react'
-import AvatarEditor from 'react-avatar-editor'
-import { useSubscription } from 'use-subscription'
-import { Button, DialogActions, DialogContent, Slider } from '@mui/material'
-import { makeStyles, useCustomSnackbar } from '@masknet/theme'
-import { Twitter } from '@masknet/web3-providers'
-import { useI18N } from '../locales/i18n_generated.js'
-import { context } from '../context.js'
-import { useNetworkContext } from '@masknet/web3-hooks-base'
-import { type AvatarInfo, useSave } from '../hooks/save/useSave.js'
+import { t } from '@lingui/core/macro'
+import { Trans } from '@lingui/react/macro'
 import { delay } from '@masknet/kit'
-import { usePersonaConnectStatus } from '@masknet/shared'
-import { useAvatarManagement } from '../contexts/index.js'
-import { isSameAddress } from '@masknet/web3-shared-base'
+import { useLastRecognizedIdentity } from '@masknet/plugin-infra/content-script'
+import { currentVisitingProfile, share } from '@masknet/plugin-infra/content-script/context'
+import { TransactionConfirmModal, usePersonaConnectStatus } from '@masknet/shared'
+import { makeStyles, useCustomSnackbar } from '@masknet/theme'
+import { useNetworkContext } from '@masknet/web3-hooks-base'
+import { Twitter } from '@masknet/web3-providers'
+import { isSameAddress, TokenType } from '@masknet/web3-shared-base'
+import { Button, DialogActions, DialogContent, Slider } from '@mui/material'
+import { useCallback, useState } from 'react'
+import AvatarEditor from 'react-avatar-editor'
 import { useNavigate } from 'react-router-dom'
+import { useSubscription } from 'use-subscription'
+import { useAvatarManagement } from '../contexts/AvatarManagement.js'
+import { type AvatarInfo, useSave } from '../hooks/useSave.js'
 import { RoutePaths } from './Routes.js'
 
 const useStyles = makeStyles()((theme) => ({
@@ -25,16 +27,15 @@ const useStyles = makeStyles()((theme) => ({
         width: '100%',
     },
     cancel: {
-        backgroundColor: theme.palette.background.default,
-        color: theme.palette.mode === 'dark' ? '#FFFFFF' : '#111418',
-        border: 'none',
         '&:hover': {
             border: 'none',
+            background: theme.palette.maskColor.bottom,
         },
     },
     content: {
         margin: 0,
         padding: 16,
+        scrollbarWidth: 'none',
         '::-webkit-scrollbar': {
             display: 'none',
         },
@@ -44,41 +45,37 @@ const useStyles = makeStyles()((theme) => ({
 
 async function uploadAvatar(blob: Blob, userId: string): Promise<AvatarInfo | undefined> {
     try {
-        const media = await Twitter.uploadUserAvatar(userId, blob)
+        const media = await Twitter.uploadMedia(blob)
         const data = await Twitter.updateProfileImage(userId, media.media_id_string)
-        if (!data) {
-            return
-        }
-        const avatarId = Twitter.getAvatarId(data?.imageUrl ?? '')
-        return { ...data, avatarId }
+        if (!data) return
+        return { ...data, avatarId: media.media_id_string }
     } catch (err) {
         return
     }
 }
 
-export const UploadAvatarDialog: FC = () => {
-    const t = useI18N()
+export function UploadAvatarDialog() {
     const { classes } = useStyles()
     const { proof, proofs, selectedTokenInfo } = useAvatarManagement()
     const { image, account, token, pluginID } = selectedTokenInfo ?? {}
     const isBindAccount = proofs.some((x) => isSameAddress(x.identity, selectedTokenInfo?.account))
     const { pluginID: currentPluginID } = useNetworkContext(pluginID)
-    const identifier = useSubscription(context.currentVisitingProfile)
+    const identifier = useSubscription(currentVisitingProfile)
     const [editor, setEditor] = useState<AvatarEditor | null>(null)
     const [scale, setScale] = useState(1)
     const { showSnackbar } = useCustomSnackbar()
     const [disabled, setDisabled] = useState(false)
     const { currentPersona } = usePersonaConnectStatus()
-
-    const [, saveAvatar] = useSave(currentPluginID)
+    const identity = useLastRecognizedIdentity()
+    const saveAvatar = useSave(currentPluginID)
     const navigate = useNavigate()
 
     const onSave = useCallback(async () => {
-        if (!editor || !account || !token || !currentPersona?.identifier || !proof) return
+        if (!editor || !account || !token || !currentPersona?.identifier) return
         editor.getImageScaledToCanvas().toBlob(async (blob) => {
-            if (!blob) return
+            if (!blob || !identity?.identifier?.userId) return
             setDisabled(true)
-            const avatarData = await uploadAvatar(blob, proof.identity)
+            const avatarData = await uploadAvatar(blob, identity.identifier.userId)
             if (!avatarData) {
                 setDisabled(false)
                 return
@@ -92,21 +89,27 @@ export const UploadAvatarDialog: FC = () => {
                 proof,
             )
             if (!response) {
-                showSnackbar(t.upload_avatar_failed_message(), { variant: 'error' })
+                showSnackbar(<Trans>Sorry, failed to save NFT Avatar. Please set again.</Trans>, { variant: 'error' })
                 setDisabled(false)
                 return
             }
 
-            showSnackbar(t.upload_avatar_success_message(), { variant: 'success' })
+            showSnackbar(<Trans>Update NFT Avatar Success!</Trans>, { variant: 'success' })
 
             navigate(RoutePaths.Exit)
             setDisabled(false)
             await delay(500)
-            location.reload()
+            TransactionConfirmModal.open({
+                title: t`NFTs Profile`,
+                message: t`You have set NFT PFP successfully.`,
+                shareText: t`I just set my NFT PFP using Mask Extension for free! To browse other's unique NFT collections and web3 activities on Twitter. Download the most powerful tool Mask.io.`,
+                tokenType: TokenType.Fungible,
+                share,
+            })
         }, 'image/png')
-    }, [account, editor, identifier, navigate, currentPersona, proof, isBindAccount, saveAvatar])
+    }, [account, editor, identifier, navigate, currentPersona, proof, isBindAccount, saveAvatar, identity])
 
-    if (!account || !image || !token || !proof) return null
+    if (!account || !image || !token) return null
 
     return (
         <>
@@ -149,10 +152,10 @@ export const UploadAvatarDialog: FC = () => {
                     fullWidth
                     variant="outlined"
                     onClick={() => navigate(-1)}>
-                    {t.cancel()}
+                    <Trans>Cancel</Trans>
                 </Button>
                 <Button fullWidth onClick={onSave} disabled={disabled}>
-                    {t.save()}
+                    <Trans>Save</Trans>
                 </Button>
             </DialogActions>
         </>

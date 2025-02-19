@@ -8,7 +8,7 @@ import { queryPostsDB } from '../../database/post/index.js'
 import { internal_wallet_backup } from './internal_wallet_backup.js'
 
 /** @internal */
-export interface InternalBackupOptions {
+interface InternalBackupOptions {
     hasPrivateKeyOnly?: boolean
     noPosts?: boolean
     noWallets?: boolean
@@ -16,6 +16,7 @@ export interface InternalBackupOptions {
     noProfiles?: boolean
     onlyForPersona?: PersonaIdentifier
     allProfile?: boolean
+    maskVersion?: string
 }
 /**
  * @internal
@@ -28,7 +29,7 @@ export async function createNewBackup(options: InternalBackupOptions): Promise<N
     const { meta, personas, posts, profiles, relations, settings } = file
 
     meta.version = 2
-    meta.maskVersion = Some(process.env.VERSION || '>=2.5.0')
+    meta.maskVersion = Some(options.maskVersion || '>=2.21.0')
     meta.createdAt = Some(new Date())
 
     settings.grantedHostPermissions = (await browser.permissions.getAll()).origins || []
@@ -63,13 +64,14 @@ export async function createNewBackup(options: InternalBackupOptions): Promise<N
                 localKey: persona.localKey ? Some(persona.localKey) : None,
                 createdAt: persona.createdAt ? Some(persona.createdAt) : None,
                 updatedAt: persona.updatedAt ? Some(persona.updatedAt) : None,
-                mnemonic: persona.mnemonic
-                    ? Some({
-                          hasPassword: persona.mnemonic.parameter.withPassword,
-                          path: persona.mnemonic.parameter.path,
-                          words: persona.mnemonic.words,
-                      })
-                    : None,
+                mnemonic:
+                    persona.mnemonic ?
+                        Some({
+                            hasPassword: persona.mnemonic.parameter.withPassword,
+                            path: persona.mnemonic.parameter.path,
+                            words: persona.mnemonic.words,
+                        })
+                    :   None,
                 linkedProfiles: persona.linkedProfiles,
                 address: persona.address ? Some(persona.address) : None,
             })
@@ -145,11 +147,11 @@ export async function createNewBackup(options: InternalBackupOptions): Promise<N
             if (!backupCreator) return
 
             async function backupPlugin() {
-                const result = await timeout(backupCreator!(), 3000, 'Timeout to backup creator.')
-                if (result.none) return
+                const result = await timeout(backupCreator!(), 60 * 1000, 'Timeout to backup creator.')
+                if (result.isNone()) return
                 // We limit the plugin contributed backups must be simple objects.
                 // We may allow plugin to store binary if we're moving to binary backup format like MessagePack.
-                plugins[plugin.ID] = result.map(JSON.stringify).map(JSON.parse).val
+                plugins[plugin.ID] = result.map(JSON.stringify).map(JSON.parse).value
             }
             if (process.env.NODE_ENV === 'development') return backupPlugin()
             return backupPlugin().catch((error) =>

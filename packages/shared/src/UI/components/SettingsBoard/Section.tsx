@@ -1,5 +1,6 @@
 import { makeStyles } from '@masknet/theme'
 import { Box, Typography } from '@mui/material'
+import type { PropsWithChildren } from 'react'
 
 const useStyles = makeStyles()((theme) => {
     return {
@@ -11,10 +12,9 @@ const useStyles = makeStyles()((theme) => {
     }
 })
 
-export interface SectionProps {
-    title: string
+interface SectionProps extends PropsWithChildren {
+    title: React.ReactNode
     additions?: React.ReactNode
-    children: React.ReactNode
 }
 
 export function Section(props: SectionProps) {

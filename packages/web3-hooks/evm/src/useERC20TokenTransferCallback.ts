@@ -2,41 +2,44 @@ import { useAsyncFn } from 'react-use'
 import { useChainContext } from '@masknet/web3-hooks-base'
 import { isGreaterThan, isZero } from '@masknet/web3-shared-base'
 import type { NetworkPluginID } from '@masknet/shared-base'
-import { type GasConfig, TransactionEventType, isValidAddress } from '@masknet/web3-shared-evm'
-import { useERC20TokenContract } from './useERC20TokenContract.js'
+import { EVMContract } from '@masknet/web3-providers'
+import { type GasConfig, TransactionEventType, isValidAddress, type ChainId } from '@masknet/web3-shared-evm'
 
-export function useERC20TokenTransferCallback(address?: string, amount?: string, recipient?: string) {
-    const { account, chainId } = useChainContext<NetworkPluginID.PLUGIN_EVM>()
-    const erc20Contract = useERC20TokenContract(chainId, address)
+export function useERC20TokenTransferCallback(
+    address?: string,
+    amount?: string,
+    recipient?: string,
+    expectedChainId?: ChainId,
+) {
+    const { account, chainId } = useChainContext<NetworkPluginID.PLUGIN_EVM>({ chainId: expectedChainId })
 
     return useAsyncFn(
         async (amount?: string, recipient?: string, gasConfig?: GasConfig) => {
-            if (!account || !recipient || !amount || isZero(amount) || !erc20Contract) {
+            if (!account || !address || !recipient || !amount || isZero(amount)) {
                 return
             }
 
             // error: invalid recipient address
             if (!isValidAddress(recipient)) return
 
+            const contract = EVMContract.getERC20Contract(address, { chainId })
+            if (!contract) return
+
             // error: insufficient balance
-            const balance = await erc20Contract.methods.balanceOf(account).call()
+            const balance = await contract.methods.balanceOf(account).call()
 
             if (isGreaterThan(amount, balance)) return
 
+            const gas = await contract.methods.transfer(recipient, amount).estimateGas({
+                from: account,
+            })
             // send transaction and wait for hash
-            return new Promise<string>(async (resolve, reject) => {
-                erc20Contract.methods
+            return new Promise<string>((resolve, reject) => {
+                contract.methods
                     .transfer(recipient, amount)
                     .send({
                         from: account,
-                        gas: await erc20Contract.methods
-                            .transfer(recipient, amount)
-                            .estimateGas({
-                                from: account,
-                            })
-                            .catch((error) => {
-                                throw error
-                            }),
+                        gas,
                         ...gasConfig,
                     })
                     .on(TransactionEventType.CONFIRMATION, (_, receipt) => {
@@ -47,6 +50,6 @@ export function useERC20TokenTransferCallback(address?: string, amount?: string,
                     })
             })
         },
-        [account, address, amount, recipient, erc20Contract],
+        [account, address, amount, chainId, recipient],
     )
 }

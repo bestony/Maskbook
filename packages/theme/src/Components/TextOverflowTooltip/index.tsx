@@ -1,19 +1,18 @@
 import { Tooltip as MuiTooltip, type TooltipProps } from '@mui/material'
-import { cloneElement, type FC, memo, type ReactElement, useLayoutEffect, useRef, useState } from 'react'
-import type { ShadowRootTooltip } from '../../entry.js'
+import { cloneElement, memo, type ReactElement } from 'react'
+import type { ShadowRootTooltip } from '../index.js'
+import { useDetectOverflow } from '../../hooks/index.js'
 
-interface TextOverflowTooltipProps extends TooltipProps {
+interface TextOverflowTooltipProps<T> extends TooltipProps {
     as?: typeof MuiTooltip | typeof ShadowRootTooltip
-    children: ReactElement
+    // cloneElement is used.
+    // eslint-disable-next-line @typescript-eslint/no-restricted-types
+    children: ReactElement<T & { ref: (ref: HTMLDivElement | null) => void }>
 }
 
-export const TextOverflowTooltip: FC<TextOverflowTooltipProps> = memo(({ children, as, ...rest }) => {
-    const ref = useRef<HTMLElement>(null)
-    const [overflow, setOverflow] = useState(false)
-    useLayoutEffect(() => {
-        if (!ref.current) return
-        setOverflow(ref.current.scrollWidth !== ref.current.offsetWidth)
-    }, [ref.current])
+export const TextOverflowTooltip = memo(function <T>({ children, as, ...rest }: TextOverflowTooltipProps<T>) {
+    const [overflow, ref] = useDetectOverflow()
+
     const Tooltip = as ?? MuiTooltip
     return (
         <Tooltip {...rest} title={overflow ? rest.title : ''}>
@@ -21,3 +20,5 @@ export const TextOverflowTooltip: FC<TextOverflowTooltipProps> = memo(({ childre
         </Tooltip>
     )
 })
+
+TextOverflowTooltip.displayName = 'TextOverflowTooltip'

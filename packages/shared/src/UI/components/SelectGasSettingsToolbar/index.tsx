@@ -1,61 +1,63 @@
-import { useEffect, useState, useMemo, useCallback } from 'react'
-import { useAsync } from 'react-use'
-import { BigNumber } from 'bignumber.js'
-import {
-    useMenuConfig,
-    FormattedBalance,
-    useSharedI18N,
-    useSelectAdvancedSettings,
-    ApproveMaskDialog,
-} from '@masknet/shared'
-import { makeStyles } from '@masknet/theme'
-import {
-    GasOptionType,
-    isZero,
-    formatBalance,
-    formatCurrency,
-    isSameAddress,
-    ZERO,
-    toFixed,
-} from '@masknet/web3-shared-base'
+import { Trans } from '@lingui/react/macro'
+import { Icons } from '@masknet/icons'
+import { ApproveMaskDialog, FormattedBalance, SelectGasSettingsModal, useMenuConfig } from '@masknet/shared'
 import { NetworkPluginID } from '@masknet/shared-base'
-import {
-    type ChainId,
-    DepositPaymaster,
-    formatEtherToGwei,
-    formatWeiToEther,
-    formatWeiToGwei,
-    type GasConfig,
-    GasEditor,
-} from '@masknet/web3-shared-evm'
-import { Typography, MenuItem, Box } from '@mui/material'
+import { makeStyles } from '@masknet/theme'
 import type { Web3Helper } from '@masknet/web3-helpers'
 import {
     useChainContext,
-    useWeb3State,
-    useNetworkContext,
     useFungibleToken,
     useFungibleTokenPrice,
+    useNetworkContext,
+    useWeb3Utils,
 } from '@masknet/web3-hooks-base'
-import { Icons } from '@masknet/icons'
-import { SmartPayBundler } from '@masknet/web3-providers'
-import { SettingsContext } from '../SettingsBoard/Context.js'
+import { DepositPaymaster, SmartPayBundler } from '@masknet/web3-providers'
+import {
+    formatBalance,
+    formatCurrency,
+    GasOptionType,
+    isSameAddress,
+    isZero,
+    toFixed,
+    ZERO,
+} from '@masknet/web3-shared-base'
+import {
+    type ChainId,
+    formatGas,
+    formatWeiToEther,
+    type GasConfig,
+    GasEditor,
+    type Transaction,
+} from '@masknet/web3-shared-evm'
+import { Box, MenuItem, type MenuProps, Typography } from '@mui/material'
+import { BigNumber } from 'bignumber.js'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { useGasCurrencyMenu } from '../../../hooks/useGasCurrencyMenu.js'
+import { SettingsContext } from '../SettingsBoard/Context.js'
+import { useQuery } from '@tanstack/react-query'
 
-interface SelectGasSettingsToolbarProps<T extends NetworkPluginID = NetworkPluginID> {
+export interface SelectGasSettingsToolbarProps<T extends NetworkPluginID = NetworkPluginID>
+    extends withClasses<'label' | 'root'> {
     pluginID?: T
     chainId?: Web3Helper.ChainIdAll
     nativeToken: Web3Helper.FungibleTokenAll
     nativeTokenPrice: number
     gasLimit: number
     gasConfig?: GasConfig
-    onChange?(gasConfig?: GasConfig): void
     supportMultiCurrency?: boolean
+    estimateGasFee?: string
+    editMode?: boolean
+    /** No effects on editMode */
+    className?: string
+    onChange?(gasConfig: GasConfig): void
+    /** Will open internal setting dialog instead if not provided */
+    onOpenCustomSetting?(): void
+    MenuProps?: Partial<MenuProps>
 }
 
 const useStyles = makeStyles()((theme) => {
     return {
-        root: {
+        button: {
             display: 'flex',
             alignItems: 'center',
             border: `1px solid ${theme.palette.divider}`,
@@ -66,7 +68,7 @@ const useStyles = makeStyles()((theme) => {
             justifyContent: 'center',
             marginLeft: 6,
         },
-        section: {
+        root: {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
@@ -115,74 +117,98 @@ const useStyles = makeStyles()((theme) => {
             fontWeight: 700,
             margin: '0px 4px',
         },
+        edit: {
+            lineHeight: '18px',
+            color: theme.palette.maskColor.primary,
+            marginRight: 4,
+            fontWeight: 700,
+            cursor: 'pointer',
+        },
     }
 })
 
-export function SelectGasSettingsToolbar(props: SelectGasSettingsToolbarProps) {
+export const SelectGasSettingsToolbar = memo(function SelectGasSettingsToolbar(props: SelectGasSettingsToolbarProps) {
     const { pluginID } = useNetworkContext(props.pluginID)
     const { chainId } = useChainContext({ chainId: props.chainId })
 
     return (
-        <SettingsContext.Provider initialState={{ pluginID, chainId }}>
+        <SettingsContext initialState={{ pluginID, chainId }}>
             <SelectGasSettingsToolbarUI {...props} />
-        </SettingsContext.Provider>
+        </SettingsContext>
     )
-}
+})
 
 export function SelectGasSettingsToolbarUI({
-    onChange,
     gasConfig: gasOption,
     gasLimit,
     nativeToken,
     nativeTokenPrice,
+    estimateGasFee,
     supportMultiCurrency,
+    editMode,
+    className,
+    classes: externalClasses,
+    onChange,
+    onOpenCustomSetting,
+    MenuProps,
 }: SelectGasSettingsToolbarProps) {
-    const t = useSharedI18N()
-    const { classes, cx, theme } = useStyles()
+    const { classes, cx, theme } = useStyles(undefined, { props: { classes: externalClasses } })
     const { gasOptions, GAS_OPTION_NAMES } = SettingsContext.useContainer()
 
     const [approveDialogOpen, setApproveDialogOpen] = useState(false)
     const [isCustomGas, setIsCustomGas] = useState(false)
-    const [currentGasOptionType, setCurrentGasOptionType] = useState<GasOptionType>(GasOptionType.NORMAL)
+    const [currentGasOptionType, setCurrentGasOptionType] = useState<GasOptionType>(
+        gasOption?.gasOptionType && gasOption.gasOptionType !== GasOptionType.CUSTOM ?
+            gasOption.gasOptionType
+        :   GasOptionType.NORMAL,
+    )
     const [currentGasCurrency, setCurrentGasCurrency] = useState(gasOption?.gasCurrency)
     const { chainId } = useChainContext()
-    const { Others } = useWeb3State<'all'>()
+    const Utils = useWeb3Utils()
 
-    const selectAdvancedSettings = useSelectAdvancedSettings(NetworkPluginID.PLUGIN_EVM)
-
-    const isSupportEIP1559 = Others?.chainResolver.isSupport(chainId, 'EIP1559')
+    const isSupportEIP1559 = Utils.chainResolver.isFeatureSupported(chainId, 'EIP1559')
     const setGasConfigCallback = useCallback(
         (maxFeePerGas: string, maxPriorityFeePerGas: string, gasPrice: string) =>
             onChange?.(
-                isSupportEIP1559
-                    ? {
-                          maxFeePerGas,
-                          maxPriorityFeePerGas,
-                          gasCurrency: currentGasCurrency,
-                          gas: new BigNumber(gasLimit).toString(),
-                      }
-                    : {
-                          gasPrice: new BigNumber(maxFeePerGas).gt(0) ? maxFeePerGas : gasPrice,
-                          gasCurrency: currentGasCurrency,
-                          gas: new BigNumber(gasLimit).toString(),
-                      },
+                isSupportEIP1559 ?
+                    {
+                        maxFeePerGas,
+                        maxPriorityFeePerGas,
+                        gasCurrency: currentGasCurrency,
+                        gas: new BigNumber(gasLimit).toString(),
+                        gasOptionType: isCustomGas ? GasOptionType.CUSTOM : currentGasOptionType,
+                    }
+                :   {
+                        gasPrice: new BigNumber(maxFeePerGas).gt(0) ? maxFeePerGas : gasPrice,
+                        gasCurrency: currentGasCurrency,
+                        gas: new BigNumber(gasLimit).toString(),
+                        gasOptionType: isCustomGas ? GasOptionType.CUSTOM : currentGasOptionType,
+                    },
             ),
-        [isSupportEIP1559, chainId, onChange, currentGasCurrency, gasLimit],
+        [isSupportEIP1559, chainId, onChange, currentGasCurrency, gasLimit, currentGasOptionType, isCustomGas],
     )
 
     const openCustomGasSettingsDialog = useCallback(async () => {
         setIsCustomGas(true)
-        const { transaction } = await selectAdvancedSettings({
+        if (typeof onOpenCustomSetting === 'function') {
+            onOpenCustomSetting()
+            return
+        }
+
+        const { settings } = await SelectGasSettingsModal.openAndWaitForClose({
             chainId,
             disableGasLimit: true,
             disableSlippageTolerance: true,
             transaction: gasOption,
         })
+        if (!settings?.transaction) return
 
-        if (!transaction) return
-
-        setGasConfigCallback(transaction.maxFeePerGas!, transaction.maxPriorityFeePerGas!, transaction.gasPrice!)
-    }, [chainId, gasOption, selectAdvancedSettings, setGasConfigCallback])
+        setGasConfigCallback(
+            (settings.transaction as Transaction).maxFeePerGas!,
+            (settings.transaction as Transaction).maxPriorityFeePerGas!,
+            (settings.transaction as Transaction).gasPrice!,
+        )
+    }, [chainId, gasOption, setGasConfigCallback, onOpenCustomSetting])
 
     const currentGasOption = gasOptions?.[currentGasOptionType]
     useEffect(() => {
@@ -195,52 +221,63 @@ export function SelectGasSettingsToolbarUI({
         )
     }, [currentGasOption, isCustomGas, setGasConfigCallback])
 
-    const { value: currencyRatio } = useAsync(async () => {
-        const chainId = await SmartPayBundler.getSupportedChainId()
-        const depositPaymaster = new DepositPaymaster(chainId)
-        const ratio = await depositPaymaster.getRatio()
+    const { data: currencyRatio } = useQuery({
+        queryKey: ['currency-ratio', chainId],
+        queryFn: async () => {
+            const chainId = await SmartPayBundler.getSupportedChainId()
+            const depositPaymaster = new DepositPaymaster(chainId)
+            const ratio = await depositPaymaster.getRatio()
 
-        return ratio
-    }, [])
+            return ratio
+        },
+    })
 
     const [menu, openMenu] = useMenuConfig(
         Object.entries(gasOptions ?? {})
             .reverse()
-            .map(([type, option]) => (
-                <MenuItem
-                    key={type}
-                    className={cx(classes.menuItem, classes.menuItemBorder)}
-                    onClick={() => {
-                        setIsCustomGas(false)
-                        setCurrentGasOptionType(type as GasOptionType)
-                    }}>
-                    <Typography className={classes.title}>{GAS_OPTION_NAMES[type as GasOptionType]}</Typography>
-                    <Typography className={classes.estimateGas}>
-                        {!isZero(option.suggestedMaxFeePerGas)
-                            ? `${formatWeiToGwei(option.suggestedMaxFeePerGas).toFixed(2)} Gwei`
-                            : !isZero(option.estimatedBaseFee ?? 0)
-                            ? `${formatEtherToGwei(option.estimatedBaseFee!).toFixed(2)} Gwei`
-                            : ''}
-                    </Typography>
-                </MenuItem>
-            ))
+            .filter(([type]) => type !== GasOptionType.CUSTOM)
+            .map(([type, { suggestedMaxFeePerGas, estimatedBaseFee }]) => {
+                const gas = formatGas(isZero(suggestedMaxFeePerGas) ? estimatedBaseFee : suggestedMaxFeePerGas)
+                return (
+                    <MenuItem
+                        key={type}
+                        className={cx(classes.menuItem, classes.menuItemBorder)}
+                        onClick={() => {
+                            setIsCustomGas(false)
+                            setCurrentGasOptionType(type as GasOptionType)
+                        }}>
+                        <Typography className={classes.title}>{GAS_OPTION_NAMES[type as GasOptionType]}</Typography>
+                        <Typography className={classes.estimateGas}>{gas}</Typography>
+                    </MenuItem>
+                )
+            })
             .concat(
                 <MenuItem key="setting" className={cx(classes.menuItem)} onClick={openCustomGasSettingsDialog}>
-                    <Typography className={classes.title}>{t.gas_settings_custom()}</Typography>
+                    <Typography className={classes.title}>
+                        <Trans>Custom</Trans>
+                    </Typography>
                 </MenuItem>,
             ),
         {
+            ...MenuProps,
             anchorSibling: false,
             anchorOrigin: {
                 vertical: 'bottom',
                 horizontal: 'right',
+                ...MenuProps?.anchorOrigin,
             },
             transformOrigin: {
                 vertical: 'top',
                 horizontal: 'right',
+                ...MenuProps?.transformOrigin,
             },
             PaperProps: {
-                style: { background: theme.palette.maskColor.bottom, transform: 'translateY(8px)' },
+                ...MenuProps?.PaperProps,
+                style: {
+                    background: theme.palette.maskColor.bottom,
+                    transform: 'translateY(8px)',
+                    ...MenuProps?.PaperProps?.style,
+                },
             },
         },
     )
@@ -249,12 +286,13 @@ export function SelectGasSettingsToolbarUI({
         NetworkPluginID.PLUGIN_EVM,
         (address) => setCurrentGasCurrency(address),
         currentGasCurrency,
-        undefined,
         () => setApproveDialogOpen(true),
     )
 
-    const { value: currencyToken } = useFungibleToken(undefined, currentGasCurrency, nativeToken, { chainId })
-    const { value: currencyTokenPrice } = useFungibleTokenPrice(NetworkPluginID.PLUGIN_EVM, currentGasCurrency)
+    const { data: currencyToken = nativeToken } = useFungibleToken(undefined, currentGasCurrency, nativeToken, {
+        chainId,
+    })
+    const { data: currencyTokenPrice } = useFungibleTokenPrice(NetworkPluginID.PLUGIN_EVM, currentGasCurrency)
 
     const gasFee = useMemo(() => {
         if (!gasOption || !gasLimit) return ZERO
@@ -270,16 +308,16 @@ export function SelectGasSettingsToolbarUI({
         if (!gasFee || gasFee.isZero()) return '$0'
         if (!currentGasCurrency || isSameAddress(nativeToken?.address, currentGasCurrency)) {
             return formatCurrency(formatWeiToEther(gasFee).times(nativeTokenPrice), 'USD', {
-                onlyRemainTwoDecimal: true,
+                onlyRemainTwoOrZeroDecimal: true,
             })
         }
 
         if (!currencyToken || !currencyTokenPrice) return '$0'
 
         return formatCurrency(
-            new BigNumber(formatBalance(gasFee, currencyToken?.decimals)).times(currencyTokenPrice),
+            new BigNumber(formatBalance(gasFee, currencyToken.decimals)).times(currencyTokenPrice),
             'USD',
-            { onlyRemainTwoDecimal: true },
+            { onlyRemainTwoOrZeroDecimal: true },
         )
     }, [
         gasFee,
@@ -290,9 +328,30 @@ export function SelectGasSettingsToolbarUI({
         currencyToken?.decimals,
     ])
 
-    return gasOptions && !isZero(gasFee) ? (
-        <Box className={classes.section}>
-            <Typography className={classes.title}>{t.gas_settings_label_gas_fee()}</Typography>
+    if (!gasOptions || isZero(gasFee)) return null
+
+    if (editMode)
+        return (
+            <Typography variant="body1" color="textPrimary" align="right" className={className}>
+                <Typography component="span" className={classes.edit} onClick={openCustomGasSettingsDialog}>
+                    <Trans>Edit</Trans>
+                </Typography>
+                <FormattedBalance
+                    value={gasFee ?? estimateGasFee}
+                    decimals={nativeToken?.decimals}
+                    symbol={nativeToken?.symbol}
+                    formatter={formatBalance}
+                    significant={3}
+                />
+                ({gasFeeUSD})
+            </Typography>
+        )
+
+    return (
+        <Box className={cx(classes.root, className)}>
+            <Typography className={cx(classes.label, classes.label)}>
+                <Trans>Gas Fee</Trans>
+            </Typography>
             <Typography className={classes.gasSection} component="div">
                 <FormattedBalance
                     value={gasFee}
@@ -301,18 +360,22 @@ export function SelectGasSettingsToolbarUI({
                     symbol={currencyToken?.symbol}
                     formatter={formatBalance}
                 />
-                <Typography className={classes.gasUSDPrice}>{t.gas_usd_price({ usd: gasFeeUSD })}</Typography>
-                <div className={classes.root} onClick={gasOptions ? openMenu : undefined}>
+                <Typography className={classes.gasUSDPrice}>≈ {gasFeeUSD}</Typography>
+                <div className={classes.button} onClick={gasOptions ? openMenu : undefined}>
                     <Typography className={classes.text}>
-                        {isCustomGas ? t.gas_settings_custom() : GAS_OPTION_NAMES[currentGasOptionType]}
+                        {isCustomGas ?
+                            <Trans>Custom</Trans>
+                        :   GAS_OPTION_NAMES[currentGasOptionType]}
                     </Typography>
                     <Icons.Candle width={12} height={12} />
                 </div>
-                {supportMultiCurrency ? <Icons.ArrowDrop onClick={openCurrencyMenu} /> : null}
+                {supportMultiCurrency ?
+                    <Icons.ArrowDrop onClick={openCurrencyMenu} />
+                :   null}
                 {menu}
                 {supportMultiCurrency ? currencyMenu : null}
             </Typography>
             <ApproveMaskDialog open={approveDialogOpen} handleClose={() => setApproveDialogOpen(false)} />
         </Box>
-    ) : null
+    )
 }

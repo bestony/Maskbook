@@ -1,24 +1,27 @@
-import { useAsyncRetry } from 'react-use'
 import type { NetworkPluginID } from '@masknet/shared-base'
-import type { Web3Helper } from '@masknet/web3-helpers'
-import { useWeb3Hub } from './useWeb3Hub.js'
+import type { HubOptions } from '@masknet/web3-providers/types'
+import { useQuery } from '@tanstack/react-query'
 import { useChainContext } from './useContext.js'
+import { useWeb3Hub } from './useWeb3Hub.js'
 
-export function useNonFungibleRarity<S extends 'all' | void = void, T extends NetworkPluginID = NetworkPluginID>(
+export function useNonFungibleRarity<T extends NetworkPluginID = NetworkPluginID>(
     pluginID?: T,
     address?: string,
     id?: string,
-    options?: Web3Helper.Web3HubOptionsScope<S, T>,
+    options?: HubOptions<T>,
 ) {
     const { account } = useChainContext({ account: options?.account })
-    const hub = useWeb3Hub(pluginID, {
+    const Hub = useWeb3Hub(pluginID, {
         account,
         ...options,
-    })
+    } as HubOptions<T>)
 
-    return useAsyncRetry(async () => {
-        if (!hub) return
-        if (!address && !id) return
-        return hub.getNonFungibleRarity?.(address || '', id || '', options)
-    }, [address, id, hub])
+    return useQuery({
+        queryKey: ['non-fungible-rarity', pluginID, address, id, options],
+        queryFn: () => {
+            // Solana only needs id
+            if (!address && !id) return null
+            return Hub.getNonFungibleRarity(address || '', id || '')
+        },
+    })
 }

@@ -1,12 +1,17 @@
-import { isSameAddress } from '@masknet/web3-shared-base'
-import { provider } from './internal_wallet.js'
 import { Some, None } from 'ts-results-es'
-import { isNonNull } from '@masknet/kit'
-import type { NormalizedBackup } from '@masknet/backup-format'
-import type { LegacyWalletRecord, WalletRecord } from '../../../shared/definitions/wallet.js'
 import { ec as EC } from 'elliptic'
-import { EthereumAddress } from 'wallet.ts'
-import { toBase64URL, type EC_Public_JsonWebKey, type EC_Private_JsonWebKey } from '@masknet/shared-base'
+import * as wallet_ts from /* webpackDefer: true */ 'wallet.ts'
+import { isNonNull } from '@masknet/kit'
+import { isSameAddress } from '@masknet/web3-shared-base'
+import type { NormalizedBackup } from '@masknet/backup-format'
+import {
+    toBase64URL,
+    type EC_Public_JsonWebKey,
+    type EC_Private_JsonWebKey,
+    type LegacyWalletRecord,
+} from '@masknet/shared-base'
+import type { WalletRecord } from '../../../shared/definitions/wallet.js'
+import { exportMnemonicWords, exportPrivateKey, getLegacyWallets, getWallets } from '../wallet/services/index.js'
 
 export async function internal_wallet_backup() {
     const wallet = await Promise.all([backupAllWallets(), backupAllLegacyWallets()])
@@ -14,13 +19,13 @@ export async function internal_wallet_backup() {
 }
 
 async function backupAllWallets(): Promise<NormalizedBackup.WalletBackup[]> {
-    const wallets = await provider.getWallets()
+    const wallets = await getWallets()
     const allSettled = await Promise.allSettled(
         wallets.map(async (wallet) => {
             return {
                 ...wallet,
-                mnemonic: wallet.derivationPath ? await provider.exportMnemonic(wallet.address) : undefined,
-                privateKey: wallet.derivationPath ? undefined : await provider.exportPrivateKey(wallet.address),
+                mnemonic: !wallet.configurable ? await exportMnemonicWords(wallet.address) : undefined,
+                privateKey: !wallet.configurable ? undefined : await exportPrivateKey(wallet.address),
             }
         }),
     )
@@ -30,7 +35,7 @@ async function backupAllWallets(): Promise<NormalizedBackup.WalletBackup[]> {
 }
 
 async function backupAllLegacyWallets(): Promise<NormalizedBackup.WalletBackup[]> {
-    const x = await provider.getLegacyWallets()
+    const x = await getLegacyWallets()
     return x.map(LegacyWalletRecordToJSONFormat)
 }
 function WalletRecordToJSONFormat(
@@ -44,6 +49,8 @@ function WalletRecordToJSONFormat(
         address: wallet.address,
         createdAt: wallet.createdAt,
         updatedAt: wallet.updatedAt,
+        derivationPath: None,
+        mnemonicId: None,
         mnemonic: None,
         passphrase: None,
         publicKey: None,
@@ -59,6 +66,9 @@ function WalletRecordToJSONFormat(
 
     if (wallet.privateKey) backup.privateKey = Some(keyToJWK(wallet.privateKey, 'private'))
 
+    if (wallet.mnemonicId) backup.mnemonicId = Some(wallet.mnemonicId)
+
+    if (wallet.derivationPath) backup.derivationPath = Some(wallet.derivationPath)
     return backup
 }
 
@@ -68,6 +78,8 @@ function LegacyWalletRecordToJSONFormat(wallet: LegacyWalletRecord): NormalizedB
         address: wallet.address,
         createdAt: wallet.createdAt,
         updatedAt: wallet.updatedAt,
+        derivationPath: None,
+        mnemonicId: None,
         mnemonic: None,
         passphrase: None,
         privateKey: None,
@@ -78,7 +90,7 @@ function LegacyWalletRecordToJSONFormat(wallet: LegacyWalletRecord): NormalizedB
     try {
         const wallet_ = wallet
         backup.passphrase = Some(wallet_.passphrase)
-        if (wallet_.mnemonic?.length)
+        if (wallet_.mnemonic.length)
             backup.mnemonic = Some<NormalizedBackup.Mnemonic>({
                 words: wallet_.mnemonic.join(' '),
                 path: "m/44'/60'/0'/0/0",
@@ -113,12 +125,12 @@ function keyToJWK(key: string, type: 'public' | 'private'): JsonWebKey {
     }
 }
 
-function base64(nums: number[]) {
-    return toBase64URL(new Uint8Array(nums).buffer)
+function base64(numbers: number[]) {
+    return toBase64URL(new Uint8Array(numbers).buffer)
 }
 function keyToAddr(key: string, type: 'public' | 'private'): string {
     const ec = new EC('secp256k1')
     const key_ = key.replace(/^0x/, '')
     const keyPair = type === 'public' ? ec.keyFromPublic(key_) : ec.keyFromPrivate(key_)
-    return EthereumAddress.from(Buffer.from(keyPair.getPublic(false, 'array'))).address
+    return wallet_ts.EthereumAddress.from(Buffer.from(keyPair.getPublic(false, 'array'))).address
 }

@@ -2,20 +2,18 @@ import urlcat from 'urlcat'
 import { BigNumber } from 'bignumber.js'
 import { ChainId, type TransactionReceipt } from '@masknet/web3-shared-evm'
 import { EMPTY_LIST, type Proof } from '@masknet/shared-base'
-import { Web3API } from '../../Connection/index.js'
-import { FunderAPI } from '../../types/Funder.js'
-import { fetchJSON } from '../../entry-helpers.js'
+import { EVMWeb3Readonly } from '../../Web3/EVM/apis/ConnectionReadonlyAPI.js'
 import { FUNDER_PROD } from '../constants.js'
+import { fetchJSON, fetchCachedJSON } from '../../helpers/fetchJSON.js'
+import { FunderAPI } from '../../entry-types.js'
 
-export class SmartPayFunderAPI implements FunderAPI.Provider<ChainId> {
-    private web3 = new Web3API()
-
+class SmartPayFunderAPI implements FunderAPI.Provider<ChainId> {
     private async assetChainId(chainId: ChainId) {
-        if (![ChainId.Matic, ChainId.Mumbai].includes(chainId)) throw new Error(`Not supported ${chainId}.`)
+        if (![ChainId.Polygon, ChainId.Mumbai].includes(chainId)) throw new Error(`Not supported ${chainId}.`)
     }
 
     private async getWhiteList(handler: string) {
-        return fetchJSON<FunderAPI.WhiteList>(urlcat(FUNDER_PROD, '/whitelist', { twitterHandle: handler }))
+        return fetchCachedJSON<FunderAPI.WhiteList>(urlcat(FUNDER_PROD, '/whitelist', { twitterHandle: handler }))
     }
 
     async getRemainFrequency(handler: string) {
@@ -32,19 +30,20 @@ export class SmartPayFunderAPI implements FunderAPI.Provider<ChainId> {
         await this.assetChainId(chainId)
 
         try {
-            const operations = await fetchJSON<FunderAPI.Operation[]>(
+            const operations = await fetchCachedJSON<FunderAPI.Operation[]>(
                 urlcat(FUNDER_PROD, '/operation', { scanKey: FunderAPI.ScanKey.OwnerAddress, scanValue: owner }),
             )
-            const web3 = this.web3.getWeb3(chainId)
             const allSettled = await Promise.allSettled(
                 operations.map<Promise<TransactionReceipt | null>>((x) =>
-                    web3.eth.getTransactionReceipt(x.tokenTransferTx),
+                    EVMWeb3Readonly.getTransactionReceipt(x.tokenTransferTx, {
+                        chainId,
+                    }),
                 ),
             )
 
             return operations.filter((_, i) => {
                 const receipt = allSettled[i] as PromiseFulfilledResult<TransactionReceipt | null>
-                return receipt.status === 'fulfilled' && receipt?.value?.status === true
+                return receipt.status === 'fulfilled' && receipt.value?.status
             })
         } catch {
             return EMPTY_LIST
@@ -70,3 +69,4 @@ export class SmartPayFunderAPI implements FunderAPI.Provider<ChainId> {
         }
     }
 }
+export const SmartPayFunder = new SmartPayFunderAPI()

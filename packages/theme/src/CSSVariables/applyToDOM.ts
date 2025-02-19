@@ -17,7 +17,16 @@ export function CSSVariableInjectorCSS(scheme: PaletteMode) {
         result[`--mask-${kebabCase(key)}`] = ns[key]
         result[`--mask-${kebabCase(key)}-fragment`] = getRGBFragment(ns, key)
     }
-    return { ':root, :host': result }
+    return {
+        ':root, :host': result,
+        // TODO doesn't work on components that mounted in portal
+        '[data-hide-scrollbar]': {
+            scrollbarWidth: 'none',
+            '&::-webkit-scrollbar': {
+                display: 'none',
+            },
+        },
+    } as const
 }
 
 export function applyMaskColorVars(node: HTMLElement, scheme: PaletteMode) {

@@ -1,54 +1,47 @@
 import urlcat from 'urlcat'
 import { GasOptionType, toFixed } from '@masknet/web3-shared-base'
-import { ChainId, formatGweiToWei, getDeBankConstants, type GasOption } from '@masknet/web3-shared-evm'
-import type { GasPriceDictResponse } from '../types.js'
-import { fetchJSON } from '../../entry-helpers.js'
-import type { GasOptionAPI } from '../../entry-types.js'
+import { type ChainId, type GasOption } from '@masknet/web3-shared-evm'
+import type { GasPriceResponse } from '../types.js'
+import { DEBANK_OPEN_API } from '../constants.js'
+import { fetchSquashedJSON } from '../../helpers/fetchJSON.js'
+import type { BaseGasOptions } from '../../entry-types.js'
+import { getDebankChain } from '../helpers.js'
 
-const DEBANK_OPEN_API = 'https://debank-proxy.r2d2.to'
-
-/**
- * Debank's data might be outdated, like gas price for aurora which requires 1 Gwei at least
- * https://twitter.com/AlexAuroraDev/status/1490353255817302016
- * Once debank fixes it, we will remove this modifier.
- */
-function gasModifier(gasDict: GasPriceDictResponse, chain: string) {
-    if (chain === getDeBankConstants(ChainId.Aurora).CHAIN_ID) {
-        ;(['fast', 'normal', 'slow'] as const).forEach((fieldKey) => {
-            const field = gasDict.data[fieldKey]
-            field.price = Math.max(field.price, formatGweiToWei(1).toNumber())
-        })
-    }
-    return gasDict
-}
-
-export class DeBankGasOptionAPI implements GasOptionAPI.Provider<ChainId, GasOption> {
+class DeBankGasOptionAPI implements BaseGasOptions.Provider<ChainId, GasOption> {
     async getGasOptions(chainId: ChainId): Promise<Record<GasOptionType, GasOption>> {
-        const { CHAIN_ID = '' } = getDeBankConstants(chainId)
+        const CHAIN_ID = getDebankChain(chainId)
         if (!CHAIN_ID) throw new Error('Failed to get gas price.')
 
-        const result = await fetchJSON<GasPriceDictResponse>(
+        const result = await fetchSquashedJSON<GasPriceResponse>(
             urlcat(DEBANK_OPEN_API, '/v1/wallet/gas_market', { chain_id: CHAIN_ID }),
         )
-        if (result.error_code !== 0) throw new Error('Failed to get gas price.')
+        if (!result.length) throw new Error('Failed to get gas price.')
 
-        const responseModified = gasModifier(result, CHAIN_ID)
+        const fast = result.find((x) => x.level === 'fast')
+        const normal = result.find((x) => x.level === 'normal')
+        const slow = result.find((x) => x.level === 'slow')
         return {
             [GasOptionType.FAST]: {
-                estimatedSeconds: responseModified.data.fast.estimated_seconds || 15,
-                suggestedMaxFeePerGas: toFixed(responseModified.data.fast.price),
+                estimatedSeconds: fast?.estimated_seconds || 15,
+                suggestedMaxFeePerGas: toFixed(fast!.price),
                 suggestedMaxPriorityFeePerGas: '0',
             },
             [GasOptionType.NORMAL]: {
-                estimatedSeconds: responseModified.data.normal.estimated_seconds || 30,
-                suggestedMaxFeePerGas: toFixed(responseModified.data.normal.price),
+                estimatedSeconds: normal?.estimated_seconds || 30,
+                suggestedMaxFeePerGas: toFixed(normal!.price),
                 suggestedMaxPriorityFeePerGas: '0',
             },
             [GasOptionType.SLOW]: {
-                estimatedSeconds: responseModified.data.slow.estimated_seconds || 60,
-                suggestedMaxFeePerGas: toFixed(responseModified.data.slow.price),
+                estimatedSeconds: slow?.estimated_seconds || 60,
+                suggestedMaxFeePerGas: toFixed(slow!.price),
                 suggestedMaxPriorityFeePerGas: '0',
+            },
+            [GasOptionType.CUSTOM]: {
+                estimatedSeconds: 0,
+                suggestedMaxFeePerGas: '',
+                suggestedMaxPriorityFeePerGas: '',
             },
         }
     }
 }
+export const DeBankGasOption = new DeBankGasOptionAPI()

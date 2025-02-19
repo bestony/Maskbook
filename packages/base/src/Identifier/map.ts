@@ -1,8 +1,10 @@
-import { Identifier } from './base.js'
-import { ProfileIdentifier as A } from './profile.js'
-import { ECKeyIdentifier as B } from './ec-key.js'
-import { PostIdentifier as C } from './post.js'
-import { PostIVIdentifier as D } from './post-iv.js'
+import {
+    Identifier,
+    ProfileIdentifier as A,
+    ECKeyIdentifier as B,
+    PostIdentifier as C,
+    PostIVIdentifier as D,
+} from './identifier.js'
 
 type I<T> = Iterable<readonly [string, T]>
 
@@ -21,15 +23,15 @@ export function convertRawMapToIdentifierMap<T>(it: I<T>, ...of: unknown[]): Map
     const droppedValues = new Map<string, T>()
     for (const [key, value] of it) {
         const id = Identifier.from(key)
-        if (id.none) {
+        if (id.isNone()) {
             droppedValues.set(key, value)
             continue
         }
 
-        if (hasProfileIdentifier && id.val instanceof A) result.set(id.val, value)
-        else if (hasECKeyIdentifier && id.val instanceof B) result.set(id.val, value)
-        else if (hasPostIdentifier && id.val instanceof C) result.set(id.val, value)
-        else if (hasPostIVIdentifier && id.val instanceof D) result.set(id.val, value)
+        if (hasProfileIdentifier && id.value instanceof A) result.set(id.value, value)
+        else if (hasECKeyIdentifier && id.value instanceof B) result.set(id.value, value)
+        else if (hasPostIdentifier && id.value instanceof C) result.set(id.value, value)
+        else if (hasPostIVIdentifier && id.value instanceof D) result.set(id.value, value)
         else droppedValues.set(key, value)
     }
 

@@ -5,7 +5,7 @@ import { shadowEnvironmentMountingRoots, type WrapJSX } from './ShadowRootSetup.
 
 export interface AttachInShadowRootOptions {
     /** Root tag. @default "main" */
-    tag?: keyof HTMLElementTagNameMap
+    tag?: keyof HTMLElementTagNameMap | (() => HTMLDivElement | HTMLSpanElement)
     /** Used to distinguish multiple React root within a same ShadowRoot */
     key?: string
     /** The AbortSignal to stop the render */
@@ -39,7 +39,7 @@ function attachReactTreeToMountedRoot(
     const tag = options.tag || 'main'
     const key = options.key || 'main'
 
-    if (shadow.querySelector(`${tag}.${key}`)) {
+    if (shadow.querySelector(`.${key}`)) {
         console.error('Tried to create root in', shadow, 'with key', key, 'which is already used. Skip rendering.')
         return {
             destroy: noop,
@@ -47,9 +47,10 @@ function attachReactTreeToMountedRoot(
         }
     }
 
-    const container = shadow.appendChild(document.createElement(tag))
+    const child = typeof tag === 'function' ? tag() : document.createElement(tag)
+    const container = shadow.appendChild(child)
     const instanceKey = `${key}(${Math.random().toString(36).slice(2)})`
-    container.className = key
+    container.classList.add(key)
 
     const controller = new AbortController()
     const signal = controller.signal
@@ -83,31 +84,30 @@ function attachReactTreeToMountedRoot(
             render(jsx)
         },
     }
-    function AttachPointComponent({ children: jsx }: React.PropsWithChildren<{}>) {
+    function AttachPointComponent({ children: jsx }: React.PropsWithChildren) {
         return ShadowRootStyleProvider({ preventPropagation: true, shadow, children: wrapJSX ? wrapJSX(jsx) : jsx })
     }
 }
 let observer: IntersectionObserver
-const callbacks = new Map<Element, Record<string, () => void>>()
+const callbacks = new WeakMap<Element, Record<string, () => void>>()
 function observe(element: Element, key: string, callback: () => void, signal: AbortSignal) {
     if (signal.aborted) return
-    if (!observer)
-        observer = new IntersectionObserver(
-            (records) => {
-                records
-                    .filter((x) => x.isIntersecting)
-                    .map((x) => {
-                        const result = callbacks.get(x.target)
-                        callbacks.delete(x.target)
-                        return result!
-                    })
-                    .filter(Boolean)
-                    .flatMap(Object.values)
-                    .forEach((f) => f())
-            },
-            // preload the element before it really hits the viewport
-            { root: null, threshold: 0.1, rootMargin: '20px 0px 50px 0px' },
-        )
+    observer ||= new IntersectionObserver(
+        (records) => {
+            records
+                .filter((x) => x.isIntersecting)
+                .map((x) => {
+                    const result = callbacks.get(x.target)
+                    callbacks.delete(x.target)
+                    return result!
+                })
+                .filter(Boolean)
+                .flatMap(Object.values)
+                .forEach((f) => f())
+        },
+        // preload the element before it really hits the viewport
+        { root: null, threshold: 0.1, rootMargin: '20px 0px 50px 0px' },
+    )
 
     observer.observe(element)
     signal.addEventListener('abort', () => observer.unobserve(element), { signal })
@@ -116,8 +116,9 @@ function observe(element: Element, key: string, callback: () => void, signal: Ab
 function isElementPartiallyInViewport(element: Element) {
     const { top, left, height, width } = element.getBoundingClientRect()
 
-    const vertInView = top <= document.documentElement.clientHeight && top + height >= 0
-    const horInView = left <= document.documentElement.clientWidth && left + width >= 0
+    const { clientHeight, clientWidth } = document.documentElement
+    const vertInView = top <= clientHeight && top + height >= 0
+    const horInView = left <= clientWidth && left + width >= 0
 
     return vertInView && horInView
 }

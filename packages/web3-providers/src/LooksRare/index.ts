@@ -1,7 +1,6 @@
 import urlcat from 'urlcat'
-import fromUnixTime from 'date-fns/fromUnixTime'
+import { fromUnixTime } from 'date-fns'
 import {
-    type HubOptions,
     type NonFungibleAsset,
     type NonFungibleTokenContract,
     type NonFungibleTokenEvent,
@@ -11,15 +10,18 @@ import {
     SourceType,
     TokenType,
 } from '@masknet/web3-shared-base'
-import { createIndicator, createNextIndicator, createPageable, type Pageable, EMPTY_LIST } from '@masknet/shared-base'
-import { ChainId, createERC20Token, formatWeiToEther, isValidChainId, SchemaType } from '@masknet/web3-shared-evm'
+import { createIndicator, createNextIndicator, createPageable, EMPTY_LIST } from '@masknet/shared-base'
+import { ChainId, createERC20Token, formatWeiToEther, SchemaType } from '@masknet/web3-shared-evm'
 import type { Collection, Event, Order, Stats, Token } from './types.js'
 import { LOOKSRARE_API_URL, LOOKSRARE_PAGE_SIZE } from './constants.js'
-import { fetchJSON, getPaymentToken, resolveActivityType } from '../entry-helpers.js'
-import type { NonFungibleTokenAPI } from '../entry-types.js'
+import { fetchJSON } from '../helpers/fetchJSON.js'
+import { getPaymentToken } from '../helpers/getPaymentToken.js'
+import { resolveActivityType } from '../helpers/resolveActivityType.js'
+import { isSupportedChainId } from './utils.js'
+import type { BaseHubOptions, NonFungibleTokenAPI } from '../entry-types.js'
 
 async function fetchFromLooksRare<T>(chainId: ChainId, url: string) {
-    if (![ChainId.Mainnet, ChainId.Rinkeby, ChainId.Matic].includes(chainId)) return
+    if (![ChainId.Mainnet, ChainId.Rinkeby].includes(chainId)) return
     return fetchJSON<T>(urlcat(LOOKSRARE_API_URL, url), { method: 'GET' })
 }
 
@@ -125,16 +127,16 @@ function createNonFungibleTokenOrderFromOrder(
     chainId: ChainId,
     order: Order,
 ): NonFungibleTokenOrder<ChainId, SchemaType> {
-    const paymentToken = getPaymentToken(chainId, { address: order.currencyAddress })
+    const paymentToken = getPaymentToken(chainId, { address: order.currency })
     return {
         id: order.hash,
         chainId,
-        quantity: order.amount.toString(),
+        quantity: order.amounts.length.toString(),
         hash: order.hash,
-        side: order.isOrderAsk ? OrderSide.Sell : OrderSide.Buy,
+        side: order.quoteType === 1 ? OrderSide.Sell : OrderSide.Buy,
         assetPermalink: urlcat('https://looksrare.org/collections/:address/:tokenId', {
-            address: order.collectionAddress,
-            tokenId: order.tokenId,
+            address: order.collection,
+            tokenId: order.itemIds[0],
         }),
         maker: {
             address: order.signer,
@@ -143,15 +145,15 @@ function createNonFungibleTokenOrderFromOrder(
         expiredAt: fromUnixTime(order.endTime).getTime(),
         priceInToken: {
             amount: order.price,
-            token: paymentToken ?? createERC20Token(chainId, order.currencyAddress),
+            token: paymentToken ?? createERC20Token(chainId, order.currency),
         },
         source: SourceType.LooksRare,
     }
 }
 
-export class LooksRareAPI implements NonFungibleTokenAPI.Provider<ChainId, SchemaType> {
-    async getAsset(address: string, tokenId: string, { chainId = ChainId.Mainnet }: HubOptions<ChainId> = {}) {
-        if (!isValidChainId(chainId)) return
+class LooksRareAPI implements NonFungibleTokenAPI.Provider<ChainId, SchemaType> {
+    async getAsset(address: string, tokenId: string, { chainId = ChainId.Mainnet }: BaseHubOptions<ChainId> = {}) {
+        if (!isSupportedChainId(chainId)) return
         const response = await fetchFromLooksRare<{
             data: Token
         }>(
@@ -164,18 +166,11 @@ export class LooksRareAPI implements NonFungibleTokenAPI.Provider<ChainId, Schem
         return createNonFungibleAssetFromToken(chainId, response?.data)
     }
 
-    async getAssets(
-        account: string,
-        options?: HubOptions<ChainId>,
-    ): Promise<Pageable<NonFungibleAsset<ChainId, SchemaType>>> {
-        throw new Error('Method not implemented.')
-    }
-
     async getContract(
         address: string,
-        { chainId = ChainId.Mainnet }: HubOptions<ChainId> = {},
+        { chainId = ChainId.Mainnet }: BaseHubOptions<ChainId> = {},
     ): Promise<NonFungibleTokenContract<ChainId, SchemaType> | undefined> {
-        if (!isValidChainId(chainId)) return
+        if (!isSupportedChainId(chainId)) return
 
         const response = await fetchFromLooksRare<{
             data: Collection
@@ -186,9 +181,9 @@ export class LooksRareAPI implements NonFungibleTokenAPI.Provider<ChainId, Schem
     async getEvents(
         address: string,
         tokenId: string,
-        { chainId = ChainId.Mainnet, indicator }: HubOptions<ChainId> = {},
+        { chainId = ChainId.Mainnet, indicator }: BaseHubOptions<ChainId> = {},
     ) {
-        if (!isValidChainId(chainId)) return createPageable(EMPTY_LIST, createIndicator(indicator))
+        if (!isSupportedChainId(chainId)) return createPageable(EMPTY_LIST, createIndicator(indicator))
         const response = await fetchFromLooksRare<{
             data: Event[]
         }>(
@@ -196,12 +191,13 @@ export class LooksRareAPI implements NonFungibleTokenAPI.Provider<ChainId, Schem
             urlcat('/api/v1/events', {
                 collection: address,
                 tokenId,
-                pagination: indicator
-                    ? JSON.stringify({
-                          first: indicator.index * LOOKSRARE_PAGE_SIZE,
-                          cursor: indicator.id,
-                      })
-                    : undefined,
+                pagination:
+                    indicator ?
+                        {
+                            first: indicator.index * LOOKSRARE_PAGE_SIZE,
+                            cursor: indicator.id,
+                        }
+                    :   undefined,
             }),
         )
 
@@ -216,9 +212,9 @@ export class LooksRareAPI implements NonFungibleTokenAPI.Provider<ChainId, Schem
 
     async getStats(
         address: string,
-        { chainId = ChainId.Mainnet }: HubOptions<ChainId> = {},
+        { chainId = ChainId.Mainnet }: BaseHubOptions<ChainId> = {},
     ): Promise<NonFungibleTokenStats | undefined> {
-        if (!isValidChainId(chainId)) return
+        if (!isSupportedChainId(chainId)) return
         const response = await fetchFromLooksRare<{
             data: Stats
         }>(
@@ -241,29 +237,29 @@ export class LooksRareAPI implements NonFungibleTokenAPI.Provider<ChainId, Schem
         address: string,
         tokenId: string,
         side: OrderSide,
-        { chainId = ChainId.Mainnet, indicator }: HubOptions<ChainId> = {},
+        { chainId = ChainId.Mainnet, indicator }: BaseHubOptions<ChainId> = {},
     ) {
-        if (!isValidChainId(chainId)) return createPageable(EMPTY_LIST, createIndicator(indicator))
+        if (!isSupportedChainId(chainId)) return createPageable(EMPTY_LIST, createIndicator(indicator))
         const response = await fetchFromLooksRare<{
             data: Order[]
         }>(
             chainId,
-            urlcat('/api/v1/orders', {
-                // For ask (aka. listing) set true. For bid (aka. offer) set false.
-                isOrderAsk: side === OrderSide.Sell,
+            urlcat('/api/v2/orders', {
+                // For ask (aka. listing) set 1. For bid (aka. offer) set 0.
+                quoteType: side === OrderSide.Sell ? 1 : 0,
                 collection: address,
-                tokenId,
-                pagination: indicator
-                    ? JSON.stringify({
-                          first: indicator.index * LOOKSRARE_PAGE_SIZE,
-                      })
-                    : undefined,
-                sort: 'NEWEST',
+                itemId: tokenId,
+                pagination:
+                    indicator ?
+                        JSON.stringify({
+                            first: indicator.index * LOOKSRARE_PAGE_SIZE,
+                        })
+                    :   undefined,
+                sort: 'PRICE_DESC',
             }),
         )
 
         if (!response?.data.length) return createPageable(EMPTY_LIST, createIndicator(indicator))
-
         const orders = response.data.map((x) => createNonFungibleTokenOrderFromOrder(chainId, x))
         return createPageable(
             orders,
@@ -271,12 +267,5 @@ export class LooksRareAPI implements NonFungibleTokenAPI.Provider<ChainId, Schem
             orders.length ? createNextIndicator(indicator) : undefined,
         )
     }
-
-    async getOffers(address: string, tokenId: string, options?: HubOptions<ChainId> | undefined) {
-        return this.getOrders(address, tokenId, OrderSide.Buy, options)
-    }
-
-    async getListings(address: string, tokenId: string, options?: HubOptions<ChainId> | undefined) {
-        return this.getOrders(address, tokenId, OrderSide.Sell, options)
-    }
 }
+export const LooksRare = new LooksRareAPI()

@@ -1,11 +1,8 @@
+import type { FileFrameProps } from '@masknet/shared'
+
 export enum Provider {
     Arweave = 'arweave',
     IPFS = 'ipfs',
-}
-
-export interface ProviderConfig {
-    name: string
-    provider: Provider
 }
 
 export interface LandingPageMetadata {
@@ -14,7 +11,6 @@ export interface LandingPageMetadata {
     size: number
     type: string
     txId: string
-    useCDN: boolean
 }
 
 export interface AttachmentOptions {
@@ -35,7 +31,7 @@ export interface FileInfo {
     provider: Provider
     /**
      * Before v3, it's checksum of the file.
-     * Since v3, it's digest(file, [provider, useCDN, encrypted])
+     * Since v3, it's digest(file, [provider, encrypted])
      */
     id: string
 
@@ -54,8 +50,8 @@ export interface FileInfo {
     landingTxID?: string
 }
 
+export type FileBaseProps = Omit<FileFrameProps, 'fileName'>
+
 export type FileInfoV1 = Omit<FileInfo, 'type' | 'provider'> & {
     type: 'arweave'
 }
-
-export type DialogCloseCallback = () => void

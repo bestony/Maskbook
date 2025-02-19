@@ -1,4 +1,3 @@
-import type { FC } from 'react'
 import { isEqual } from 'lodash-es'
 import { Icons } from '@masknet/icons'
 import type { Web3Helper } from '@masknet/web3-helpers'
@@ -54,7 +53,7 @@ export interface TokenMenuListProps {
     fromSocialCard?: boolean
 }
 
-export const TokenMenuList: FC<TokenMenuListProps> = ({ options, currentOption, onSelect, fromSocialCard = false }) => {
+export function TokenMenuList({ options, currentOption, onSelect, fromSocialCard = false }: TokenMenuListProps) {
     const { classes } = useStyles()
     const theme = useTheme()
     return (
@@ -69,6 +68,7 @@ export const TokenMenuList: FC<TokenMenuListProps> = ({ options, currentOption, 
                             address={x.address || ''}
                             symbol={x.symbol}
                             size={20}
+                            disableBadge
                         />
 
                         <Stack className={classes.itemText}>
@@ -79,10 +79,12 @@ export const TokenMenuList: FC<TokenMenuListProps> = ({ options, currentOption, 
                                 overflow="hidden"
                                 textOverflow="ellipsis">
                                 <span className={classes.name}>{x.name}</span>
-                                {x.symbol ? <span className={classes.symbol}>({x.symbol})</span> : null}
+                                {x.symbol ?
+                                    <span className={classes.symbol}>({x.symbol})</span>
+                                :   null}
                             </Typography>
                             <div className={classes.itemCheckout}>
-                                {x.rank ? (
+                                {x.rank ?
                                     <Typography
                                         fontSize={14}
                                         fontWeight={700}
@@ -92,18 +94,19 @@ export const TokenMenuList: FC<TokenMenuListProps> = ({ options, currentOption, 
                                         textOverflow="ellipsis">
                                         #{x.rank}
                                     </Typography>
-                                ) : null}
-                                {fromSocialCard ? null : selected ? (
+                                :   null}
+                                {fromSocialCard ?
+                                    null
+                                : selected ?
                                     <Icons.CheckCircle size={20} className={classes.checkedIcon} />
-                                ) : (
-                                    <RadioButtonUncheckedIcon
+                                :   <RadioButtonUncheckedIcon
                                         style={{
                                             fontSize: 20,
                                             color: theme.palette.maskColor.secondaryLine,
                                             visibility: 'hidden',
                                         }}
                                     />
-                                )}
+                                }
                             </div>
                         </Stack>
                     </MenuItem>

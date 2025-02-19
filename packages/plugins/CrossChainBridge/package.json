@@ -1,11 +1,18 @@
 {
   "name": "@masknet/plugin-cross-chain-bridge",
   "private": true,
+  "sideEffects": [
+    "./src/register.ts"
+  ],
   "type": "module",
   "exports": {
     ".": {
       "mask-src": "./src/index.ts",
       "default": "./dist/index.js"
+    },
+    "./register": {
+      "mask-src": "./src/register.ts",
+      "default": "./dist/register.js"
     }
   },
   "dependencies": {
@@ -14,7 +21,33 @@
     "@masknet/shared": "workspace:^",
     "@masknet/shared-base": "workspace:^",
     "@masknet/shared-base-ui": "workspace:^",
-    "@masknet/theme": "workspace:^",
-    "react-use": "^17.4.0"
+    "@masknet/theme": "workspace:^"
+  },
+  "lingui": {
+    "compileNamespace": "json",
+    "locales": [
+      "en-US",
+      "ja-JP",
+      "ko-KR",
+      "zh-CN",
+      "zh-TW"
+    ],
+    "fallbackLocales": {
+      "zh-CN": "zh-TW",
+      "zh-TW": "zh-CN",
+      "default": "en-US"
+    },
+    "formatOptions": {
+      "origins": true,
+      "lineNumbers": false
+    },
+    "catalogs": [
+      {
+        "path": "src/locale/{locale}",
+        "include": [
+          "src"
+        ]
+      }
+    ]
   }
 }

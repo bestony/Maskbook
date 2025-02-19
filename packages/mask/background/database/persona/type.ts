@@ -1,5 +1,5 @@
 import type { IDBPSafeTransaction } from '../utils/openDB.js'
-import type { DBSchema } from 'idb/with-async-ittr'
+import type { DBSchema } from 'idb'
 import type {
     PersonaIdentifier,
     AESJsonWebKey,
@@ -64,7 +64,7 @@ type PersonaIdentifierStoredInDB = {
 
 /** @internal */
 export type RelationRecordDB = Omit<RelationRecord, 'profile' | 'linked'> & {
-    network: string
+    network?: string
     profile: string
     linked: string
 }
@@ -100,9 +100,9 @@ export interface PersonaDB extends DBSchema {
 }
 
 export interface RelationRecord {
-    profile: ProfileIdentifier
+    profile: ProfileIdentifier | PersonaIdentifier
     linked: PersonaIdentifier
-    network: string
+    network?: string
     favor: RelationFavor
 }
 
@@ -141,7 +141,7 @@ export interface PersonaRecord {
     hasLogout?: boolean
     /**
      * create a dummy persona which should hide to the user until
-     * connected at least one SNS identity
+     * connected at least one website
      */
     uninitialized?: boolean
 }

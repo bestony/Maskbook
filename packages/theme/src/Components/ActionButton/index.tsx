@@ -8,13 +8,13 @@ export interface ActionButtonProps extends ButtonProps {
     loading?: boolean
 }
 
-const useStyles = makeStyles()(() => ({
+const useStyles = makeStyles()({
     loading: {
         ['& > *']: {
             opacity: 0.3,
         },
     },
-}))
+})
 
 export function ActionButton<T extends React.ComponentType<any> = React.ComponentType>(
     props: ActionButtonProps & PropsOf<T>,
@@ -27,8 +27,8 @@ export function ActionButton<T extends React.ComponentType<any> = React.Componen
             style={{ width, ...style, pointerEvents: loading ? 'none' : undefined }}
             {...rest}
             disableElevation
-            disabled={!!(rest.disabled && !loading)}>
-            {loading ? (
+            disabled={!!(rest.disabled || loading)}>
+            {loading ?
                 <Box
                     position="absolute"
                     width="100%"
@@ -39,8 +39,8 @@ export function ActionButton<T extends React.ComponentType<any> = React.Componen
                     style={{ opacity: 1 }}>
                     <LoadingBase />
                 </Box>
-            ) : null}
-            <span>{children}</span>
+            :   null}
+            {children}
         </Button>
     )
 }

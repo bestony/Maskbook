@@ -1,21 +1,20 @@
+import { useCallback, useEffect } from 'react'
+import { useAsyncRetry } from 'react-use'
 import type { IdentityResolved } from '@masknet/plugin-infra/content-script'
-import { useSharedI18N } from '../index.js'
-import type { PersonaConnectStatus } from '../types.js'
-import { useRemoteControlledDialog } from '@masknet/shared-base-ui'
 import {
-    CrossIsolationMessages,
     DashboardRoutes,
-    type MaskEvents,
     type PersonaInformation,
-    type PluginID,
     isSamePersona,
     isSameProfile,
     resolveNextIDIdentityToProfile,
+    MaskMessages,
+    type ECKeyIdentifier,
 } from '@masknet/shared-base'
-import { useCallback, useEffect } from 'react'
-import { useAsyncRetry } from 'react-use'
 import { NextIDProof } from '@masknet/web3-providers'
-import type { WebExtensionMessage } from '@dimensiondev/holoflows-kit'
+import { LeavePageConfirmModal, PersonaSelectPanelModal } from '../UI/modals/index.js'
+import type { PersonaConnectStatus } from '../types.js'
+import { useLingui } from '@lingui/react/macro'
+import { timeout } from '@masknet/kit'
 
 const DEFAULT_PERSONA_CONNECT_STATUS: PersonaConnectStatus = {
     action: undefined,
@@ -27,51 +26,39 @@ const DEFAULT_PERSONA_CONNECT_STATUS: PersonaConnectStatus = {
 }
 
 export function useCurrentPersonaConnectStatus(
-    personas: PersonaInformation[],
-    currentPersonaIdentifier: string,
-    openDashboard: (route?: DashboardRoutes, search?: string) => Promise<any>,
+    personas: readonly PersonaInformation[],
+    currentPersonaIdentifier?: ECKeyIdentifier,
+    openDashboard?: (route: DashboardRoutes, search?: string) => void,
     identity?: IdentityResolved,
-    message?: WebExtensionMessage<MaskEvents>,
-    directTo?: PluginID,
 ) {
-    const t = useSharedI18N()
-
-    const { setDialog: setPersonaSelectPanelDialog } = useRemoteControlledDialog(
-        CrossIsolationMessages.events.PersonaSelectPanelDialogUpdated,
-    )
-    const { setDialog: setCreatePersonaConfirmDialog } = useRemoteControlledDialog(
-        CrossIsolationMessages.events.openPageConfirm,
-    )
-
-    const create = useCallback(
-        (target?: string, position?: 'center' | 'top-right', enableVerify?: boolean, direct = false) => {
-            if (direct) {
-                openDashboard(DashboardRoutes.Setup)
-            } else {
-                setCreatePersonaConfirmDialog({
-                    open: true,
+    const { t } = useLingui()
+    const create = useCallback((target?: string, position?: 'center' | 'top-right', _2?: boolean, direct = false) => {
+        if (direct) {
+            openDashboard?.(DashboardRoutes.SignUpPersona)
+        } else {
+            LeavePageConfirmModal.open({
+                openDashboard,
+                info: {
                     target: 'dashboard',
-                    url: target ?? DashboardRoutes.Setup,
-                    text: t.applications_create_persona_hint(),
-                    title: t.applications_create_persona_title(),
-                    actionHint: t.applications_create_persona_action(),
+                    url: target ?? DashboardRoutes.SignUpPersona,
+                    text: t`Please create a Persona and verify your account to use this.`,
+                    title: t`Persona`,
+                    actionHint: t`Create persona`,
                     position,
-                })
-            }
-        },
-        [setCreatePersonaConfirmDialog],
-    )
+                },
+            })
+        }
+    }, [])
 
     const openPersonListDialog = useCallback(
-        (target?: string, position?: 'center' | 'top-right', enableVerify = true) => {
-            setPersonaSelectPanelDialog({
-                open: true,
-                target,
+        (finishTarget?: string, position?: 'center' | 'top-right', enableVerify = true) => {
+            PersonaSelectPanelModal.open({
+                finishTarget,
                 position,
                 enableVerify,
             })
         },
-        [setPersonaSelectPanelDialog],
+        [],
     )
 
     const {
@@ -95,7 +82,7 @@ export function useCurrentPersonaConnectStatus(
             }
         }
 
-        // handle had persona but not connect current sns
+        // handle had persona but not connect current site
         if (!currentProfile) {
             return {
                 action: openPersonListDialog,
@@ -105,12 +92,16 @@ export function useCurrentPersonaConnectStatus(
             }
         }
 
-        // handle had persona and connected current sns, then check the nextID
+        // handle had persona and connected current site, then check the nextID
         try {
-            const nextIDInfo = await NextIDProof.queryExistedBindingByPersona(currentPersona.identifier.publicKeyAsHex)
+            const nextIDInfo = await timeout(
+                NextIDProof.queryExistedBindingByPersona(currentPersona.identifier.publicKeyAsHex),
+                30_000,
+                t`Request timed out.`,
+            )
             const verifiedProfile = nextIDInfo?.proofs.find(
                 (x) =>
-                    isSameProfile(resolveNextIDIdentityToProfile(x.identity, x.platform), currentProfile?.identifier) &&
+                    isSameProfile(resolveNextIDIdentityToProfile(x.identity, x.platform), currentProfile.identifier) &&
                     x.is_valid,
             )
 
@@ -130,22 +121,16 @@ export function useCurrentPersonaConnectStatus(
                 hasPersona: true,
             }
         }
-    }, [
-        currentPersonaIdentifier,
-        personas,
-        identity?.identifier?.toText(),
-        create,
-        openPersonListDialog,
-        openDashboard,
-    ])
-
-    useEffect(() => message?.events.ownPersonaChanged.on(retry), [retry, message])
+    }, [currentPersonaIdentifier, personas, identity?.identifier, create, openPersonListDialog])
 
     useEffect(() => {
-        return message?.events.ownProofChanged.on(() => {
-            retry()
-        })
-    }, [message, retry])
+        const cleanPersonaChangedListener = MaskMessages.events.ownPersonaChanged.on(retry)
+        const cleanProofsChangedListener = MaskMessages.events.ownProofChanged.on(retry)
+        return () => {
+            cleanPersonaChangedListener()
+            cleanProofsChangedListener()
+        }
+    }, [retry])
 
     return { value, loading, retry, error }
 }

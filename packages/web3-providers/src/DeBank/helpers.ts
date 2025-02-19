@@ -1,11 +1,11 @@
-import { isNil } from 'lodash-es'
+import { compact, isNil, memoize } from 'lodash-es'
 import {
     type ChainId,
-    chainResolver,
-    createNativeToken,
     formatEthereumAddress,
     isNativeTokenAddress,
     SchemaType,
+    ZERO_ADDRESS,
+    isValidAddress,
 } from '@masknet/web3-shared-evm'
 import {
     CurrencyType,
@@ -15,27 +15,59 @@ import {
     toFixed,
     TokenType,
     type Transaction,
+    isSameAddress,
+    TransactionStatusType,
 } from '@masknet/web3-shared-base'
-import DeBank from '@masknet/web3-constants/evm/debank.json'
-import { DebankTransactionDirection, type HistoryResponse, type WalletTokenRecord } from './types.js'
+import { EVMChainResolver } from '../Web3/EVM/apis/ResolverAPI.js'
+import {
+    DebankTransactionDirection,
+    type DebankChains,
+    type HistoryResponse,
+    type TransferringAsset,
+    type WalletTokenRecord,
+} from './types.js'
+import { CHAIN_ID_TO_DEBANK_CHAIN_MAP, DEBANK_CHAIN_TO_CHAIN_ID_MAP } from './constants.js'
+
+export function getChainIdByDebankChain(chain: DebankChains) {
+    const chainId = DEBANK_CHAIN_TO_CHAIN_ID_MAP[chain]
+    if (process.env.NODE_ENV === 'development' && !chainId) {
+        console.warn('[Debank] no matching chainId for chain', chain)
+    }
+    return chainId
+}
+
+export function getDebankChain(chainId: number) {
+    const chain = CHAIN_ID_TO_DEBANK_CHAIN_MAP[chainId]
+    if (process.env.NODE_ENV === 'development' && !chain) {
+        console.warn('[Debank] no matching chainId', chainId)
+    }
+    return chain
+}
 
 export function formatAssets(data: WalletTokenRecord[]): Array<FungibleAsset<ChainId, SchemaType>> {
-    const supportedChains = Object.values({ ...DeBank.CHAIN_ID, BSC: 'bnb' }).filter(Boolean)
+    const resolveNativeAddress = memoize((chainId: ChainId) => {
+        try {
+            // chainId is beyond builtin chainIds
+            return EVMChainResolver.nativeCurrency(chainId)?.address || ZERO_ADDRESS
+        } catch {
+            return ZERO_ADDRESS
+        }
+    })
 
     return data
-        .filter((x) => chainResolver.chainId(x.chain))
+        .filter((x) => getChainIdByDebankChain(x.chain))
         .map((x) => {
-            const chainId = chainResolver.chainId(x.chain)!
-            const address = supportedChains.includes(x.id) ? createNativeToken(chainId).address : x.id
+            const chainId = getChainIdByDebankChain(x.chain)
+            const address = x.id in DEBANK_CHAIN_TO_CHAIN_ID_MAP ? resolveNativeAddress(chainId) : x.id
 
             return {
-                id: address,
+                id: x.id,
                 address: formatEthereumAddress(address),
                 chainId,
                 type: TokenType.Fungible,
                 schema: isNativeTokenAddress(address) ? SchemaType.Native : SchemaType.ERC20,
                 decimals: x.decimals,
-                name: x.name,
+                name: x.name.replace('(PoS)', ''),
                 symbol: x.symbol,
                 balance: rightShift(x.amount, x.decimals).toFixed(),
                 price: {
@@ -49,63 +81,100 @@ export function formatAssets(data: WalletTokenRecord[]): Array<FungibleAsset<Cha
         })
 }
 
-export function formatTransactions(
+function toTxAsset(
+    { token_id, amount }: TransferringAsset,
     chainId: ChainId,
+    token_dict: HistoryResponse['data']['token_dict'],
+    direction: DebankTransactionDirection,
+) {
+    const token = token_dict[token_id]
+    // token_dict might not contain value to current token_id
+    if (!token) return null
+    const schema =
+        token.decimals ?
+            (
+                isValidAddress(token.id) // for native token, token.id is symbol. e.g `matic` for Polygon
+            ) ?
+                SchemaType.ERC20
+            :   SchemaType.Native
+        : token.is_erc721 ? SchemaType.ERC721
+        : SchemaType.ERC1155
+
+    if (process.env.NODE_ENV === 'development') {
+        console.assert(token, `[Debank] no matching token in token_dict with token_id ${token_id}`)
+    }
+    const fallbackName = token.is_erc1155 || token.is_erc721 ? 'Unknown NFT' : 'Unknown Token'
+    return {
+        id: token_id,
+        chainId,
+        type: token.decimals ? TokenType.Fungible : TokenType.NonFungible,
+        schema,
+        name: token.name || token.collection?.name || fallbackName,
+        symbol: token.optimized_symbol || token.collection?.name || fallbackName,
+        address: token.decimals ? token.contract_id : ZERO_ADDRESS,
+        decimals: token.decimals || 1,
+        direction,
+        amount: amount?.toString(),
+        logoURI: token.logo_url,
+    }
+}
+
+/** 0: failed 1: succeed */
+function normalizeTxStatus(status: 0 | 1): TransactionStatusType {
+    const map = {
+        0: TransactionStatusType.FAILED,
+        1: TransactionStatusType.SUCCEED,
+    }
+    return map[status]
+}
+
+export function formatTransactions(
     { cate_dict, history_list, token_dict }: HistoryResponse['data'],
+    ownerAddress: string,
 ): Array<Transaction<ChainId, SchemaType>> {
-    return history_list.map((transaction) => {
-        let type = transaction.tx?.name
-        if (!type && !isNil(transaction.cate_id)) {
-            type = cate_dict[transaction.cate_id].name
-        } else if (type === '') {
-            type = 'contract interaction'
+    const transactions = history_list.map((transaction): Transaction<ChainId, SchemaType> | undefined => {
+        let txType = transaction.tx?.name
+        if (!txType && !isNil(transaction.cate_id)) {
+            txType = cate_dict[transaction.cate_id].name
+        } else if (txType === '') {
+            txType = 'contract interaction'
         }
+
+        const chainId = getChainIdByDebankChain(transaction.chain)
+        if (!chainId) return
+
+        if (isSameAddress(transaction.sends[0]?.to_addr, ZERO_ADDRESS)) {
+            txType = 'burn'
+        }
+        const isIn = transaction.cate_id === 'receive'
+        const from = transaction.tx?.from_addr ?? (isIn ? transaction.other_addr : '')
+        const to = isIn ? ownerAddress : transaction.other_addr
+        const { SEND, RECEIVE } = DebankTransactionDirection
         return {
             id: transaction.id,
             chainId,
-            type,
-            filterType: transaction.cate_id,
-            timestamp: transaction.time_at,
-            from: transaction.tx?.from_addr ?? '',
-            to: transaction.other_addr,
-            status: transaction.tx?.status,
-            tokens: [
-                ...transaction.sends.map(({ amount, token_id }) => ({
-                    id: token_id,
-                    chainId,
-                    type: token_dict[token_id]?.decimals ? TokenType.Fungible : TokenType.NonFungible,
-                    schema: SchemaType.ERC20,
-                    name: token_dict[token_id]?.name ?? 'Unknown Token',
-                    symbol: token_dict[token_id]?.optimized_symbol,
-                    address: token_id,
-                    direction: DebankTransactionDirection.SEND,
-                    amount: amount?.toString(),
-                    logoURI: token_dict[token_id]?.logo_url,
-                })),
-                ...transaction.receives.map(({ amount, token_id }) => ({
-                    id: token_id,
-                    chainId,
-                    type: token_dict[token_id]?.decimals ? TokenType.Fungible : TokenType.NonFungible,
-                    schema: SchemaType.ERC20,
-                    name: token_dict[token_id]?.name ?? 'Unknown Token',
-                    symbol: token_dict[token_id]?.optimized_symbol,
-                    address: token_id,
-                    direction: DebankTransactionDirection.RECEIVE,
-                    amount: amount?.toString(),
-                    logoURI: token_dict[token_id]?.logo_url,
-                })),
-            ],
-            fee: transaction.tx
-                ? { eth: transaction.tx.eth_gas_fee?.toString(), usd: transaction.tx.usd_gas_fee?.toString() }
-                : undefined,
+            type: txType,
+            cateType: transaction.cate_id,
+            cateName:
+                transaction.cate_id ?
+                    cate_dict[transaction.cate_id].name
+                :   transaction.tx?.name || 'Contract Interaction',
+            timestamp: transaction.time_at * 1000,
+            from,
+            to,
+            status: normalizeTxStatus(transaction.tx?.status ?? 0),
+            assets: compact([
+                ...transaction.sends.map((asset) => toTxAsset(asset, chainId, token_dict, SEND)),
+                ...transaction.receives.map((asset) => toTxAsset(asset, chainId, token_dict, RECEIVE)),
+            ]),
+            fee:
+                transaction.tx ?
+                    { eth: transaction.tx.eth_gas_fee?.toString(), usd: transaction.tx.usd_gas_fee?.toString() }
+                :   undefined,
+            isScam: transaction.is_scam,
         }
     })
-}
-
-export function resolveDeBankAssetId(id: string) {
-    if (id === 'bsc') return 'bnb'
-    if (id === 'cfx') return 'Conflux'
-    return id
+    return compact(transactions)
 }
 
 export function resolveDeBankAssetIdReversed(id: string) {

@@ -1,46 +1,43 @@
 import { memo, type PropsWithChildren, useCallback, useMemo, useState } from 'react'
 import { useAsync, useUpdateEffect } from 'react-use'
 import { first, omit } from 'lodash-es'
-import { WalletMessages } from '@masknet/plugin-wallet'
-import { useRemoteControlledDialog } from '@masknet/shared-base-ui'
+import { Icons } from '@masknet/icons'
+import { makeStyles, MaskColorVar } from '@masknet/theme'
+import { SmartPayBundler } from '@masknet/web3-providers'
+import { isSameAddress, resolveNextID_NetworkPluginID, TransactionStatusType } from '@masknet/web3-shared-base'
+import type { Web3Helper } from '@masknet/web3-helpers'
 import { alpha, Box, Button, Divider, MenuItem, Typography } from '@mui/material'
-import { useSharedI18N } from '../../../locales/index.js'
-import { Action } from './Action.js'
-import { type BindingProof, type NetworkPluginID, isDashboardPage } from '@masknet/shared-base'
+import { type BindingProof, type NetworkPluginID, Sniffings } from '@masknet/shared-base'
 import {
     useChainContext,
     useNetworkContext,
     useNetworkDescriptor,
     useProviderDescriptor,
-    useWeb3State,
     useDefaultChainId,
     useRecentTransactions,
     useWallets,
     useAccount,
     useChainId,
+    useWeb3Utils,
 } from '@masknet/web3-hooks-base'
-import type { Web3Helper } from '@masknet/web3-helpers'
-import { Icons } from '@masknet/icons'
+import { Action } from './Action.js'
 import type { WalletDescriptionProps } from './WalletDescription.js'
 import { useWalletName } from './hooks/useWalletName.js'
 import { WalletDescription } from './WalletDescription.js'
-import { isSameAddress, resolveNextID_NetworkPluginID, TransactionStatusType } from '@masknet/web3-shared-base'
 import { WalletMenuItem } from './WalletMenuItem.js'
-import { makeStyles, MaskColorVar } from '@masknet/theme'
-import { useMenuConfig } from '../../../index.js'
-import { SmartPayBundler } from '@masknet/web3-providers'
-
-const isDashboard = isDashboardPage()
+import { SelectProviderModal, WalletStatusModal, useMenuConfig } from '../../../index.js'
+import { Trans } from '@lingui/react/macro'
 
 const useStyles = makeStyles()((theme) => ({
     root: {
         boxSizing: 'content-box',
         display: 'flex',
-        backgroundColor: isDashboard ? MaskColorVar.mainBackground : alpha(theme.palette.maskColor.bottom, 0.8),
+        backgroundColor:
+            Sniffings.is_dashboard_page ? MaskColorVar.mainBackground : alpha(theme.palette.maskColor.bottom, 0.8),
         boxShadow:
-            theme.palette.mode === 'dark'
-                ? '0px 0px 20px rgba(255, 255, 255, 0.12)'
-                : '0px 0px 20px rgba(0, 0, 0, 0.05)',
+            theme.palette.mode === 'dark' ?
+                '0px 0px 20px rgba(255, 255, 255, 0.12)'
+            :   '0px 0px 20px rgba(0, 0, 0, 0.05)',
         backdropFilter: 'blur(16px)',
         padding: theme.spacing(2),
         borderRadius: '0 0 12px 12px',
@@ -57,45 +54,36 @@ const useStyles = makeStyles()((theme) => ({
     menu: {
         background: theme.palette.maskColor.bottom,
         boxShadow:
-            theme.palette.mode === 'dark'
-                ? '0px 4px 30px rgba(255, 255, 255, 0.15)'
-                : '0px 4px 30px rgba(0, 0, 0, 0.1)',
+            theme.palette.mode === 'dark' ?
+                '0px 4px 30px rgba(255, 255, 255, 0.15)'
+            :   '0px 4px 30px rgba(0, 0, 0, 0.1)',
+        borderRadius: Sniffings.is_popup_page ? 16 : undefined,
     },
 }))
 
-interface PluginVerifiedWalletStatusBarProps extends PropsWithChildren<{}> {
+interface PluginVerifiedWalletStatusBarProps extends PropsWithChildren {
     verifiedWallets: BindingProof[]
     className?: string
     expectedAddress: string
-    openPopupWindow: () => void
+    openPopupWindow?: () => void
     onChange?: (address: string, pluginID: NetworkPluginID, chainId: Web3Helper.ChainIdAll) => void
+    onChangeWallet?: () => void
 }
 
 export const PluginVerifiedWalletStatusBar = memo<PluginVerifiedWalletStatusBarProps>(
-    ({ className, children, verifiedWallets, onChange, expectedAddress, openPopupWindow }) => {
-        const t = useSharedI18N()
+    ({ className, children, verifiedWallets, onChange, expectedAddress, openPopupWindow, onChangeWallet }) => {
         const { classes, cx } = useStyles()
 
         const account = useAccount()
         const globalChainId = useChainId()
         const { chainId } = useChainContext()
         const allWallets = useWallets()
-
+        const { pluginID: currentPluginID } = useNetworkContext()
         const isSmartPay = !!allWallets.find((x) => isSameAddress(x.address, account) && x.owner)
         const { value: smartPaySupportChainId } = useAsync(async () => SmartPayBundler.getSupportedChainId(), [])
 
-        const { openDialog: openSelectProviderDialog } = useRemoteControlledDialog(
-            WalletMessages.events.selectProviderDialogUpdated,
-        )
-
-        const { openDialog: openWalletStatusDialog } = useRemoteControlledDialog(
-            WalletMessages.events.walletStatusDialogUpdated,
-        )
-
         // exclude current account
         const wallets = verifiedWallets.filter((x) => !isSameAddress(x.identity, account))
-
-        const { pluginID: currentPluginID } = useNetworkContext()
 
         const selectedWallet = wallets.find((x) => isSameAddress(x.identity, expectedAddress))
 
@@ -104,9 +92,8 @@ export const PluginVerifiedWalletStatusBar = memo<PluginVerifiedWalletStatusBarP
         // Whether the current account is verified
         const isVerifiedAccount = verifiedWallets.some((x) => isSameAddress(x.identity, account))
 
-        const pluginIdByDefaultVerifiedWallet = defaultVerifiedWallet
-            ? resolveNextID_NetworkPluginID(defaultVerifiedWallet?.platform)
-            : undefined
+        const pluginIdByDefaultVerifiedWallet =
+            defaultVerifiedWallet ? resolveNextID_NetworkPluginID(defaultVerifiedWallet.platform) : undefined
 
         const isNextIdWallet = !account || !isSameAddress(account, expectedAddress)
 
@@ -118,11 +105,14 @@ export const PluginVerifiedWalletStatusBar = memo<PluginVerifiedWalletStatusBarP
             isNextIdWallet,
         )
 
-        const { Others } = useWeb3State(defaultPluginId)
+        const Utils = useWeb3Utils(defaultPluginId)
         const defaultChainId = useDefaultChainId(defaultPluginId)
 
         const providerDescriptor = useProviderDescriptor(defaultPluginId)
-        const networkDescriptor = useNetworkDescriptor(defaultPluginId, !isNextIdWallet ? chainId : defaultChainId)
+        const networkDescriptor = useNetworkDescriptor(
+            defaultPluginId,
+            !isNextIdWallet ? globalChainId : defaultChainId,
+        )
 
         const pendingTransactions = useRecentTransactions(currentPluginID, TransactionStatusType.NOT_DEPEND)
 
@@ -135,10 +125,11 @@ export const PluginVerifiedWalletStatusBar = memo<PluginVerifiedWalletStatusBarP
                 networkIcon: networkDescriptor?.icon,
                 providerIcon: !isNextIdWallet ? providerDescriptor?.icon : undefined,
                 iconFilterColor: !isNextIdWallet ? providerDescriptor?.iconFilterColor : '',
-                formattedAddress: walletIdentity ? Others?.formatAddress(walletIdentity, 4) : '',
-                addressLink: walletIdentity
-                    ? Others?.explorerResolver.addressLink?.(!isNextIdWallet ? chainId : defaultChainId, walletIdentity)
-                    : '',
+                formattedAddress: walletIdentity ? Utils.formatAddress(walletIdentity, 4) : '',
+                addressLink:
+                    walletIdentity ?
+                        Utils.explorerResolver.addressLink(!isNextIdWallet ? chainId : defaultChainId, walletIdentity)
+                    :   '',
                 address: walletIdentity,
                 verified: !isNextIdWallet ? isVerifiedAccount : true,
             }),
@@ -169,27 +160,25 @@ export const PluginVerifiedWalletStatusBar = memo<PluginVerifiedWalletStatusBarP
 
         const [menu, openMenu] = useMenuConfig(
             [
-                account ? (
+                account ?
                     <WalletMenuItem
                         address={account}
                         verified={isVerifiedAccount}
-                        onChangeWallet={openSelectProviderDialog}
+                        onChangeWallet={onChangeWallet ? onChangeWallet : () => SelectProviderModal.open()}
                         selected={isSameAddress(descriptionProps.address, account)}
                         onSelect={onSelect}
                         expectedChainId={isSmartPay ? smartPaySupportChainId : globalChainId}
                     />
-                ) : (
-                    <MenuItem key="connect">
+                :   <MenuItem key="connect">
                         <Button
                             variant="roundedContained"
                             fullWidth
-                            onClick={openSelectProviderDialog}
+                            onClick={onChangeWallet ? onChangeWallet : () => SelectProviderModal.open()}
                             sx={{ minWidth: 311 }}>
-                            {t.connect_your_wallet()}
+                            <Trans>Connect your wallet</Trans>
                         </Button>
-                    </MenuItem>
-                ),
-                <Divider key="divider" style={{ marginLeft: 8, marginRight: 8 }} />,
+                    </MenuItem>,
+                wallets.length ? <Divider key="divider" style={{ marginLeft: 8, marginRight: 8 }} /> : null,
                 ...wallets.map((x) => (
                     <WalletMenuItem
                         key={x.identity}
@@ -200,14 +189,16 @@ export const PluginVerifiedWalletStatusBar = memo<PluginVerifiedWalletStatusBarP
                         onSelect={onSelect}
                     />
                 )),
-                <MenuItem key="Wallet Setting" onClick={openPopupWindow}>
-                    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                        <Icons.WalletSetting size={30} sx={{ marginRight: 1, transform: 'translate(0px, 2px)' }} />
-                        <Typography fontSize={14} fontWeight={700}>
-                            {t.connected_wallet_settings()}
-                        </Typography>
-                    </Box>
-                </MenuItem>,
+                openPopupWindow ?
+                    <MenuItem key="Wallet Setting" onClick={openPopupWindow}>
+                        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                            <Icons.WalletSetting size={30} sx={{ marginRight: 1, transform: 'translate(0px, 2px)' }} />
+                            <Typography fontSize={14} fontWeight={700}>
+                                <Trans>Connected wallets settings</Trans>
+                            </Typography>
+                        </Box>
+                    </MenuItem>
+                :   null,
             ],
             {
                 classes: { paper: classes.menu },
@@ -221,8 +212,8 @@ export const PluginVerifiedWalletStatusBar = memo<PluginVerifiedWalletStatusBarP
         if (!account && verifiedWallets.length === 0) {
             return (
                 <Box className={cx(classes.root, className)}>
-                    <Button fullWidth onClick={openSelectProviderDialog}>
-                        <Icons.ConnectWallet className={classes.connection} /> {t.plugin_wallet_connect_a_wallet()}
+                    <Button fullWidth onClick={() => SelectProviderModal.open()}>
+                        <Icons.Wallet className={classes.connection} /> <Trans>Connect Wallet</Trans>
                     </Button>
                 </Box>
             )
@@ -235,9 +226,9 @@ export const PluginVerifiedWalletStatusBar = memo<PluginVerifiedWalletStatusBarP
                         {...omit(descriptionProps, 'address')}
                         onClick={openMenu}
                         pending={!!pendingTransactions.length}
-                        onPendingClick={openWalletStatusDialog}
+                        onPendingClick={() => WalletStatusModal.open()}
                     />
-                    <Action openSelectWalletDialog={openSelectProviderDialog}>{children}</Action>
+                    <Action openSelectWalletDialog={() => SelectProviderModal.open()}>{children}</Action>
                 </Box>
                 {menu}
             </>

@@ -1,70 +1,108 @@
 /* spell-checker: disable */
-import { Configuration, ProvidePlugin, DefinePlugin, EnvironmentPlugin } from 'webpack'
+import type webpack from 'webpack'
+import type rspack from '@rspack/core'
 import type { Configuration as DevServerConfiguration } from 'webpack-dev-server'
 
+import { emitJSONFile } from '@nice-labs/emit-file-webpack-plugin'
+import DevtoolsIgnorePlugin from 'devtools-ignore-webpack-plugin'
 import WebExtensionPlugin from 'webpack-target-webextension'
-import CopyPlugin = require('copy-webpack-plugin')
-import HTMLPlugin = require('html-webpack-plugin')
-import ReactRefreshWebpackPlugin = require('@pmmmwh/react-refresh-webpack-plugin')
-import { ReadonlyCachePlugin } from './ReadonlyCachePlugin'
-import { EnvironmentPluginCache, EnvironmentPluginNoCache } from './EnvironmentPlugin'
-import { emitManifestFile } from './manifest'
-import { emitGitInfo, getGitInfo } from './git-info'
+import ReactCompiler from 'react-compiler-webpack'
+import { getGitInfo } from './git-info.js'
+import { emitManifestFile } from './plugins/manifest.js'
+// @ts-expect-error
+import LavaMoat from '@lavamoat/webpack'
 
-import { join } from 'path'
-import { readFileSync, readdirSync } from 'fs'
-import { nonNullable, EntryDescription, normalizeEntryDescription, joinEntryItem } from './utils'
-import { BuildFlags, normalizeBuildFlags, computedBuildFlags, computeCacheKey } from './flags'
+import { readFile, readdir } from 'node:fs/promises'
+import { createRequire } from 'node:module'
+import { join } from 'node:path'
 
-import './clean-hmr'
+import { computeCacheKey, computedBuildFlags, normalizeBuildFlags, type BuildFlags } from './flags.js'
+import { ProfilingPlugin } from './plugins/ProfilingPlugin.js'
+import { joinEntryItem, normalizeEntryDescription, type EntryDescription } from './utils.js'
 
-export function createConfiguration(_inputFlags: BuildFlags): Configuration {
-    const VERSION = require('../src/manifest.json').version
+import './clean-hmr.js'
+import { TrustedTypesPlugin } from './plugins/TrustedTypesPlugin.js'
+
+const require = createRequire(import.meta.url)
+const patchesDir = join(import.meta.dirname, '../../../patches')
+
+export async function createConfiguration(
+    isRspack: boolean,
+    _inputFlags: BuildFlags,
+): Promise<webpack.Configuration | rspack.Configuration> {
+    const webpack = isRspack ? undefined! : await import('webpack')
+    const rspack = isRspack ? await import('@rspack/core') : undefined
+    const VERSION = JSON.parse(await readFile(new URL('../../../package.json', import.meta.url), 'utf-8')).version
     const flags = normalizeBuildFlags(_inputFlags)
     const computedFlags = computedBuildFlags(flags)
     const cacheKey = computeCacheKey(flags, computedFlags)
 
-    const polyfillFolder = join(flags.outputPath, './polyfill')
+    const productionLike = flags.mode === 'production' || flags.profiling
 
-    const patchesDir = join(__dirname, '../../../patches')
-    const pnpmPatches = readdirSync(patchesDir).map((x) => join(patchesDir, x))
-    const baseConfig: Configuration = {
+    const nonWebpackJSFiles = join(flags.outputPath, './js')
+    const polyfillFolder = join(nonWebpackJSFiles, './polyfill')
+    const pnpmPatches = readdir(patchesDir).then((files) => files.map((x) => join(patchesDir, x)))
+
+    let WEB3_CONSTANTS_RPC = process.env.WEB3_CONSTANTS_RPC || ''
+    if (WEB3_CONSTANTS_RPC) {
+        try {
+            if (typeof JSON.parse(WEB3_CONSTANTS_RPC) === 'object') {
+                console.error("Environment variable WEB3_CONSTANTS_RPC should be JSON.stringify'ed twice")
+                WEB3_CONSTANTS_RPC = JSON.stringify(WEB3_CONSTANTS_RPC)
+            }
+        } catch (err) {}
+    }
+    const baseConfig = {
         name: 'mask',
         // to set a correct base path for source map
-        context: join(__dirname, '../../../'),
+        context: join(import.meta.dirname, '../../../'),
         mode: flags.mode,
-        devtool: computedFlags.sourceMapKind,
+        devtool: computedFlags.sourceMapKind as any,
         target: ['web', 'es2022'],
         entry: {},
-        experiments: { backCompat: false, asyncWebAssembly: true },
+        node: {
+            global: true,
+            __dirname: false,
+            __filename: false,
+        },
+        experiments:
+            rspack ?
+                { futureDefaults: true }
+            :   {
+                    futureDefaults: true,
+                    syncImportAssertion: true,
+                    deferImport: { asyncModule: 'error' },
+                },
+        // @ts-expect-error
         cache: {
             type: 'filesystem',
             buildDependencies: {
-                config: [__filename],
-                patches: pnpmPatches,
+                config: [import.meta.filename],
+                patches: await pnpmPatches,
             },
             version: cacheKey,
         },
         resolve: {
             extensionAlias: {
-                '.js': ['.tsx', '.ts', '.js'],
-                '.mjs': ['.mts', '.mjs'],
+                '.js': ['.js', '.tsx', '.ts'],
+                '.mjs': ['.mjs', '.mts'],
             },
             extensions: ['.js', '.ts', '.tsx'],
             alias: (() => {
-                const alias = {
-                    // We want to always use the full version.
-                    'async-call-rpc$': require.resolve('async-call-rpc/full'),
-                    // It's a Node impl for xhr which is unnecessary
-                    'xhr2-cookies': require.resolve('./package-overrides/xhr2-cookies.mjs'),
-                    'error-polyfill': require.resolve('./package-overrides/null.mjs'),
+                const alias: Record<string, string> = {
+                    // conflict with SES
+                    'error-polyfill$': require.resolve('./package-overrides/null.mjs'),
                 }
                 if (computedFlags.reactProductionProfiling) alias['react-dom$'] = require.resolve('react-dom/profiling')
                 if (flags.devtools) {
                     // Note: when devtools is enabled, we will install react-refresh/runtime manually to keep the correct react global hook installation order.
                     // https://github.com/pmmmwh/react-refresh-webpack-plugin/issues/680
                     alias[require.resolve('@pmmmwh/react-refresh-webpack-plugin/client/ReactRefreshEntry.js')] =
-                        require.resolve('./package-overrides/null.mjs')
+                        //
+                        alias[
+                            join(require.resolve('@rspack/plugin-react-refresh/package.json'), '../') +
+                                'client/reactRefreshEntry.js'
+                        ] = require.resolve('./package-overrides/null.mjs')
                 }
                 return alias
             })(),
@@ -74,8 +112,8 @@ export function createConfiguration(_inputFlags: BuildFlags): Configuration {
                 https: require.resolve('https-browserify'),
                 stream: require.resolve('stream-browserify'),
                 crypto: require.resolve('crypto-browserify'),
-                buffer: require.resolve('buffer'),
-                'text-encoding': require.resolve('@sinonjs/text-encoding'),
+                zlib: require.resolve('zlib-browserify'),
+                buffer: require.resolve('buffer/'),
             },
             conditionNames: ['mask-src', '...'],
         },
@@ -88,272 +126,376 @@ export function createConfiguration(_inputFlags: BuildFlags): Configuration {
             },
             rules: [
                 // Source map for libraries
-                computedFlags.sourceMapKind
-                    ? { test: /\.js$/, enforce: 'pre', use: [require.resolve('source-map-loader')] }
-                    : null!,
-                // Patch old regenerator-runtime
-                {
-                    test: /\..?js$/,
-                    loader: require.resolve('./fix-regenerator-runtime.ts'),
-                },
+                !rspack && computedFlags.sourceMapKind ?
+                    { test: /\.js$/, enforce: 'pre', use: [require.resolve('source-map-loader')] }
+                :   null,
                 // TypeScript
                 {
-                    test: /\.tsx?$/,
+                    test: /\.[mc]?[jt]sx?$/i,
                     parser: { worker: ['OnDemandWorker', '...'] },
-                    // Compile all ts files in the workspace
-                    include: join(__dirname, '../../'),
-                    loader: require.resolve('swc-loader'),
-                    options: {
-                        sourceMaps: !!computedFlags.sourceMapKind,
-                        // https://swc.rs/docs/configuring-swc/
-                        jsc: {
-                            parser: {
-                                syntax: 'typescript',
-                                dynamicImport: true,
-                                tsx: true,
-                            },
-                            target: 'es2022',
-                            externalHelpers: true,
-                            transform: {
-                                react: {
-                                    runtime: 'automatic',
-                                    refresh: flags.reactRefresh && {
-                                        refreshReg: '$RefreshReg$',
-                                        refreshSig: '$RefreshSig$',
-                                        emitFullSignatures: true,
+                    include: join(import.meta.dirname, '../../'),
+                    use: [
+                        {
+                            loader: rspack ? 'builtin:swc-loader' : require.resolve('swc-loader'),
+                            options: {
+                                // https://swc.rs/docs/configuring-swc/
+                                jsc: {
+                                    preserveAllComments: true,
+                                    parser: {
+                                        syntax: 'typescript',
+                                        dynamicImport: true,
+                                        tsx: true,
+                                    },
+                                    target: 'es2022',
+                                    externalHelpers: true,
+                                    transform: {
+                                        react: {
+                                            runtime: 'automatic',
+                                            // react 19 not using file names in _jsxDEV
+                                            development: false,
+                                            refresh: flags.reactRefresh,
+                                        },
+                                    },
+                                    experimental: {
+                                        keepImportAttributes: true,
+                                        plugins: [['@lingui/swc-plugin', {}]],
                                     },
                                 },
-                            },
-                            experimental: {
-                                keepImportAssertions: true,
-                            },
+                            } satisfies import('@swc/core').Options,
                         },
-                    },
+                        flags.reactCompiler ?
+                            {
+                                loader: ReactCompiler.reactCompilerLoader,
+                                options: ReactCompiler.defineReactCompilerLoaderOption({
+                                    babelTransFormOpt: { sourceMaps: !!computedFlags.sourceMapKind },
+                                    compilationMode: flags.reactCompiler === true ? 'infer' : flags.reactCompiler,
+                                    sources: (x) => x.endsWith('.tsx') || !!x.match(/use[A-Z]/),
+                                }),
+                            }
+                        :   undefined!,
+                    ].filter(Boolean),
                 },
                 // compress svg files
-                flags.mode === 'production'
-                    ? {
-                          test: /\.svg$/,
-                          loader: require.resolve('svgo-loader'),
-                          // overrides
-                          options: {
-                              js2svg: {
-                                  pretty: false,
-                              },
-                          },
-                          dependency(data) {
-                              if (data === '') return false
-                              if (data !== 'url')
-                                  throw new TypeError(
-                                      'The only import mode valid for a non-JS file is via new URL(). Current import mode: ' +
-                                          data,
-                                  )
-                              return true
-                          },
-                          type: 'asset/resource',
-                      }
-                    : null!,
+                flags.mode === 'production' ?
+                    {
+                        test: /\.svg$/,
+                        loader: require.resolve('svgo-loader'),
+                        // overrides
+                        options: {
+                            js2svg: {
+                                pretty: false,
+                            },
+                        },
+                        exclude: /node_modules/,
+                        dependency: 'url',
+                        type: 'asset/resource',
+                    }
+                :   null,
             ],
         },
         plugins: [
-            new ProvidePlugin({
-                // Polyfill for Node global "Buffer" variable
+            !productionLike && flags.lavamoat ?
+                new LavaMoat({
+                    policyLocation: join(import.meta.dirname, '../../../lavamoat/mask.json'),
+                    generatePolicy: true,
+                    emitPolicySnapshot: true,
+                    readableResourceIds: true,
+                    lockdown: false, // we lockdown on our own
+                    runChecks: true,
+                    diagnosticsVerbosity: 1,
+                })
+            :   undefined,
+            new WebExtensionPlugin({
+                background: { pageEntry: 'background', serviceWorkerEntry: 'backgroundWorker' },
+                experimental_output: {
+                    backgroundWorker: 'sw.js',
+                    contentScript: 'cs.js',
+                },
+            }),
+            // this slow down performance for rspack
+            !rspack &&
+                flags.sourceMapHideFrameworks !== false &&
+                new DevtoolsIgnorePlugin({
+                    shouldIgnorePath: (path) => {
+                        if (path.includes('masknet') || path.includes('dimensiondev')) return false
+                        return path.includes('/node_modules/') || path.includes('/webpack/')
+                    },
+                }),
+            new (rspack?.ProvidePlugin || webpack.default.ProvidePlugin)({
+                // Widely used Node.js global variable
                 Buffer: [require.resolve('buffer'), 'Buffer'],
-                'process.nextTick': require.resolve('next-tick'),
+                // same as https://github.com/MetaMask/extension-provider/issues/48
+                'process.nextTick': [require.resolve('./package-overrides/process.nextTick.mjs'), 'default'],
             }),
-            (() => {
-                // In development mode, it will be shared across different target to speedup.
-                // This is a valuable trade-off.
-                const runtimeValues = {
-                    ...getGitInfo(flags.reproducibleBuild),
-                    engine: flags.engine,
-                    channel: flags.channel,
-                    manifest: String(flags.manifest),
-                }
-                if (flags.mode === 'development') return EnvironmentPluginCache(runtimeValues)
-                return EnvironmentPluginNoCache(runtimeValues)
-            })(),
-            new EnvironmentPlugin({
-                NODE_ENV: flags.mode,
-                shadowRootMode: flags.devtools || flags.channel === 'beta' ? 'open' : 'closed',
-                NODE_DEBUG: false,
-                WEB3_CONSTANTS_RPC: process.env.WEB3_CONSTANTS_RPC ?? '',
-                MASK_SENTRY_DSN: process.env.MASK_SENTRY_DSN ?? '',
+            new (rspack?.EnvironmentPlugin || webpack.default.EnvironmentPlugin)({
+                NODE_ENV: productionLike ? 'production' : flags.mode,
+                NODE_DEBUG: 'false',
+                /** JSON.stringify twice */
+                WEB3_CONSTANTS_RPC: WEB3_CONSTANTS_RPC,
+                MASK_SENTRY_DSN: process.env.MASK_SENTRY_DSN || '',
+                MASK_SENTRY: process.env.MASK_SENTRY || JSON.stringify('disabled'),
+                MASK_MIXPANEL: process.env.MASK_MIXPANEL || JSON.stringify('disabled'),
+                NEXT_PUBLIC_FIREFLY_API_URL: process.env.NEXT_PUBLIC_FIREFLY_API_URL || '',
             }),
-            new DefinePlugin({
-                'process.env.VERSION': `(typeof browser === 'object' && browser.runtime ? browser.runtime.getManifest().version : ${JSON.stringify(
-                    VERSION,
-                )})`,
+            new (rspack?.DefinePlugin || webpack.default.DefinePlugin)({
                 'process.browser': 'true',
-                'process.version': JSON.stringify('v19.0.0'),
-                // MetaMaskInpageProvider => extension-port-stream => readable-stream depends on stdin and stdout
+                'process.version': JSON.stringify('v20.0.0'),
+                // https://github.com/MetaMask/extension-provider/issues/48
+                // MetaMaskInpageProvider
                 'process.stdout': '/* stdout */ null',
                 'process.stderr': '/* stdin */ null',
             }),
-            flags.reactRefresh && new ReactRefreshWebpackPlugin({ overlay: false, esModule: true }),
-            // https://github.com/webpack/webpack/issues/13581
-            flags.readonlyCache && new ReadonlyCachePlugin(),
-            new CopyPlugin({
+            flags.reactRefresh &&
+                new (
+                    await (rspack ?
+                        import('@rspack/plugin-react-refresh')
+                    :   import('@pmmmwh/react-refresh-webpack-plugin'))
+                ).default({ overlay: false, esModule: true }),
+            flags.profiling && new ProfilingPlugin(),
+            // TODO: crashes rspack
+            !rspack && new TrustedTypesPlugin(),
+            ...emitManifestFile(flags, computedFlags),
+            new (rspack?.CopyRspackPlugin || (await import('copy-webpack-plugin')).default)({
                 patterns: [
-                    { from: join(__dirname, '../public/'), to: flags.outputPath },
-                    { from: join(__dirname, '../../injected-script/dist/injected-script.js'), to: flags.outputPath },
-                    { from: join(__dirname, '../../gun-utils/gun.js'), to: flags.outputPath },
-                    { from: join(__dirname, '../../mask-sdk/dist/mask-sdk.js'), to: flags.outputPath },
+                    { from: join(import.meta.dirname, '../public/'), to: flags.outputPath },
                     {
-                        context: join(__dirname, '../../polyfills/dist/'),
+                        from: join(import.meta.dirname, '../../injected-script/dist/injected-script.js'),
+                        to: nonWebpackJSFiles,
+                    },
+                    { from: join(import.meta.dirname, '../../gun-utils/gun.js'), to: nonWebpackJSFiles },
+                    { from: join(import.meta.dirname, '../../mask-sdk/dist/mask-sdk.js'), to: nonWebpackJSFiles },
+                    {
+                        context: join(import.meta.dirname, '../../polyfills/dist/'),
                         from: '*.js',
                         to: polyfillFolder,
                     },
-                    { from: require.resolve('webextension-polyfill/dist/browser-polyfill.js'), to: polyfillFolder },
                     {
                         from:
-                            flags.mode === 'development'
-                                ? require.resolve('../../../node_modules/ses/dist/lockdown.umd.js')
-                                : require.resolve('../../../node_modules/ses/dist/lockdown.umd.min.js'),
+                            productionLike ?
+                                require.resolve('webextension-polyfill/dist/browser-polyfill.min.js')
+                            :   require.resolve('webextension-polyfill/dist/browser-polyfill.js'),
+                        to: join(polyfillFolder, 'browser-polyfill.js'),
+                    },
+                    {
+                        from:
+                            productionLike ?
+                                require.resolve('../../../node_modules/ses/dist/lockdown.umd.min.js')
+                            :   require.resolve('../../../node_modules/ses/dist/lockdown.umd.js'),
                         to: join(polyfillFolder, 'lockdown.js'),
                     },
                     {
-                        from: join(__dirname, '../../sentry/dist/sentry.js'),
-                        to: join(flags.outputPath, 'sentry.js'),
+                        from: join(import.meta.dirname, '../../sentry/dist/sentry.js'),
+                        to: nonWebpackJSFiles,
                     },
                 ],
             }),
-            emitManifestFile(flags, computedFlags),
-            emitGitInfo(flags.reproducibleBuild),
-        ].filter(nonNullable),
+            ...(() => {
+                const { BRANCH_NAME, BUILD_DATE, COMMIT_DATE, COMMIT_HASH, DIRTY } = getGitInfo()
+                const json = {
+                    BRANCH_NAME,
+                    BUILD_DATE,
+                    channel: flags.channel,
+                    COMMIT_DATE,
+                    COMMIT_HASH,
+                    DIRTY,
+                    VERSION,
+                    REACT_DEVTOOLS_EDITOR_URL: flags.devtools ? flags.devtoolsEditorURI : undefined,
+                }
+                return [
+                    emitJSONFile({ content: json, name: 'build-info.json' }),
+                    emitJSONFile({ content: { ...json, channel: 'beta' }, name: 'build-info-beta.json' }),
+                ]
+            })(),
+        ],
+        // Focus on performance optimization. Not for download size/cache stability optimization.
         optimization: {
-            minimize: false,
-            runtimeChunk: false,
-            splitChunks: {
-                maxInitialRequests: Infinity,
-                chunks: 'all',
-                cacheGroups: {
-                    // split each npm package into a chunk.
-                    defaultVendors: {
-                        test: /[/\\]node_modules[/\\]/,
-                        name(module) {
-                            const path = (module.context as string)
-                                .replace(/\\/g, '/')
-                                .match(/node_modules\/\.pnpm\/(.+)/)![1]
-                                .split('/')
-                            // [@org+pkgname@version, node_modules, @org, pkgname, ...inner path]
-                            if (path[0].startsWith('@')) return `npm-ns.${path[2].replace('@', '')}.${path[3]}`
-                            // [pkgname@version, node_modules, pkgname, ...inner path]
-                            return `npm.${path[2]}`
-                        },
-                    },
+            // we don't need deterministic, and we also don't have chunk request at init we don't need "size"
+            // @ts-expect-error
+            chunkIds:
+                productionLike ?
+                    rspack ? 'deterministic'
+                    :   'total-size'
+                :   'named',
+            concatenateModules: productionLike,
+            flagIncludedChunks: productionLike,
+            mangleExports: false,
+            minimize: productionLike,
+            minimizer:
+                // TODO: minimizer
+                rspack ? undefined : (
+                    [
+                        new (await import('terser-webpack-plugin')).default({
+                            minify: (await import('terser-webpack-plugin')).swcMinify,
+                            exclude: /polyfill/,
+                            // https://swc.rs/docs/config-js-minify
+                            terserOptions: {
+                                compress: {
+                                    drop_debugger: false,
+                                    ecma: 2020,
+                                    keep_classnames: true,
+                                    keep_fnames: true,
+                                    keep_infinity: true,
+                                    passes: 3,
+                                    pure_getters: false,
+                                    sequences: false,
+                                },
+                                output: {
+                                    ascii_only: true,
+                                },
+                                mangle: false,
+                            },
+                        }),
+                    ]
+                ),
+            moduleIds: flags.channel === 'stable' && flags.mode === 'production' ? 'deterministic' : 'named',
+            nodeEnv: false, // provided in EnvironmentPlugin
+            realContentHash: false,
+            removeAvailableModules: productionLike,
+            // cannot use single, mv3 requires a different runtime.
+            // cannot use false, in some cases there are more than 1 runtime in the single page and cause bug.
+            runtimeChunk: {
+                name: (entry: { name: string }) => {
+                    return (
+                        entry.name === 'backgroundWorker' ?
+                            rspack ? 'runtime_' + entry.name
+                            :   (false as any as string)
+                        :   'runtime'
+                    )
                 },
             },
+            splitChunks:
+                productionLike ? undefined : (
+                    {
+                        maxInitialRequests: Infinity,
+                        chunks: 'all',
+                        cacheGroups: {
+                            // split each npm package into a chunk to give better debug experience.
+                            defaultVendors: {
+                                test: /[/\\]node_modules[/\\]/,
+                                name(module: any) {
+                                    const path = (module.context as string)
+                                        .replace(/\\/g, '/')
+                                        .match(/node_modules\/\.pnpm\/(.+)/)![1]
+                                        .split('/')
+                                    // [@org+pkgname@version, node_modules, @org, pkgname, ...inner path]
+                                    if (path[0].startsWith('@')) return `npm-ns.${path[2].replace('@', '')}.${path[3]}`
+                                    // [pkgname@version, node_modules, pkgname, ...inner path]
+                                    return `npm.${path[2]}`
+                                },
+                            },
+                        },
+                    }
+                ),
         },
         output: {
-            environment: {
-                module: false,
-                dynamicImport: true,
-            },
             path: flags.outputPath,
-            filename: 'js/[name].js',
-            // In some cases webpack will emit files starts with "_" which is reserved in web extension.
-            chunkFilename: 'js/chunk.[name].js',
-            assetModuleFilename: 'assets/[hash][ext][query]',
-            devtoolModuleFilenameTemplate: 'webpack://[namespace]/[resource-path]',
-            hotUpdateChunkFilename: 'hot/[id].[fullhash].js',
-            hotUpdateMainFilename: 'hot/[runtime].[fullhash].json',
+            filename: 'entry/[name].js',
+            chunkFilename: productionLike ? 'bundled/[id].js' : 'bundled/chunk-[name].js',
+            assetModuleFilename: productionLike ? 'assets/[hash][ext][query]' : 'assets/[name]-[hash][ext][query]',
+            webassemblyModuleFilename: 'assets/[hash].wasm',
+            devtoolModuleFilenameTemplate:
+                productionLike ?
+                    'webpack://[namespace]/[resource-path]'
+                :   join(import.meta.dirname, '../../../[resource-path]'),
             globalObject: 'globalThis',
             publicPath: '/',
             clean: flags.mode === 'production',
-            trustedTypes: {
-                policyName: 'webpack',
-            },
+            trustedTypes:
+                String(computedFlags.sourceMapKind).includes('eval') ?
+                    {
+                        policyName: 'webpack',
+                    }
+                :   undefined,
         },
-        ignoreWarnings: [/Failed to parse source map/],
+        ignoreWarnings: [
+            /Failed to parse source map/,
+            /Critical dependency: the request of a dependency is an expression/,
+        ],
         devServer: {
             hot: flags.hmr ? 'only' : false,
             liveReload: false,
             client: flags.hmr ? undefined : false,
         } as DevServerConfiguration,
         stats: flags.mode === 'production' ? 'errors-only' : undefined,
-    }
-    baseConfig.module!.rules = baseConfig.module!.rules!.filter(Boolean)
+    } satisfies webpack.Configuration & rspack.Configuration
 
-    const plugins = baseConfig.plugins!
-    const entries: Record<string, EntryDescription> = (baseConfig.entry = {
-        dashboard: normalizeEntryDescription(join(__dirname, '../src/extension/dashboard/index.tsx')),
-        popups: normalizeEntryDescription(join(__dirname, '../src/extension/popups/SSR-client.ts')),
-        connect: normalizeEntryDescription(join(__dirname, '../src/extension/popups/renderConnect.tsx')),
-        contentScript: normalizeEntryDescription(join(__dirname, '../src/content-script.ts')),
-        debug: normalizeEntryDescription(join(__dirname, '../src/extension/debug-page/index.tsx')),
-    })
-    baseConfig.plugins!.push(
-        addHTMLEntry({ chunks: ['dashboard'], filename: 'dashboard.html', lockdown: computedFlags.lockdown }),
-        addHTMLEntry({ chunks: ['popups'], filename: 'popups.html', lockdown: computedFlags.lockdown }),
-        addHTMLEntry({ chunks: ['connect'], filename: 'popups-connect.html', lockdown: computedFlags.lockdown }),
-        addHTMLEntry({
-            chunks: ['contentScript'],
-            filename: 'generated__content__script.html',
-            lockdown: computedFlags.lockdown,
-        }),
-        addHTMLEntry({ chunks: ['debug'], filename: 'debug.html', lockdown: computedFlags.lockdown }),
+    if (rspack) {
+        // @ts-expect-error
+        delete baseConfig.optimization.flagIncludedChunks
+        // @ts-expect-error
+        delete baseConfig.cache
+    }
+
+    const entries = (baseConfig.entry = {
+        dashboard: withReactDevTools(join(import.meta.dirname, '../dashboard/initialization/index.ts')),
+        popups: withReactDevTools(join(import.meta.dirname, '../popups/initialization/index.ts')),
+        contentScript: withReactDevTools(join(import.meta.dirname, '../content-script/index.ts')),
+        background: normalizeEntryDescription(join(import.meta.dirname, '../background/initialization/mv2-entry.ts')),
+        backgroundWorker: normalizeEntryDescription(
+            join(import.meta.dirname, '../background/initialization/mv3-entry.ts'),
+        ),
+        devtools: undefined as EntryDescription | undefined,
+    }) satisfies Record<string, EntryDescription | undefined>
+    delete entries.devtools
+
+    baseConfig.plugins.push(
+        await addHTMLEntry(['dashboard'], 'dashboard.html', TemplateType.NoLoading, flags.profiling),
+        await addHTMLEntry(['popups'], 'popups.html', TemplateType.Loading, flags.profiling),
+        await addHTMLEntry(['background'], 'background.html', TemplateType.Background, flags.profiling),
     )
     if (flags.devtools) {
-        entries.devtools = normalizeEntryDescription(join(__dirname, '../devtools/panels/index.tsx'))
-        baseConfig.plugins!.push(
-            addHTMLEntry({ chunks: ['devtools'], filename: 'devtools-background.html', lockdown: false }),
+        entries.devtools = normalizeEntryDescription(join(import.meta.dirname, '../devtools/panels/index.tsx'))
+        baseConfig.plugins.push(
+            await addHTMLEntry(['devtools'], 'devtools-background.html', TemplateType.NoLoading, flags.profiling),
         )
     }
-    // background
-    if (flags.manifest === 3) {
-        entries.background = {
-            import: join(__dirname, '../background/mv3-entry.ts'),
-            filename: 'js/background.js',
-        }
-        plugins.push(new WebExtensionPlugin({ background: { entry: 'background', manifest: 3 } }))
-    } else {
-        entries.background = normalizeEntryDescription(join(__dirname, '../background/mv2-entry.ts'))
-        plugins.push(new WebExtensionPlugin({ background: { entry: 'background', manifest: 2 } }))
-        plugins.push(
-            addHTMLEntry({
-                chunks: ['background'],
-                filename: 'background.html',
-                gun: true,
-                lockdown: computedFlags.lockdown,
-            }),
-        )
-    }
-    for (const entry in entries) {
-        if (entry !== 'background' && entry !== 'devtools') {
-            withReactDevTools(entries[entry])
-        }
-    }
-
     return baseConfig
 
-    function withReactDevTools(entry: EntryDescription) {
-        if (!flags.devtools) return
-        entry.import = joinEntryItem(join(__dirname, '../devtools/content-script/index.ts'), entry.import)
+    function withReactDevTools(entry: string | string[] | EntryDescription): EntryDescription {
+        if (!flags.devtools) return normalizeEntryDescription(entry)
+        entry = normalizeEntryDescription(entry)
+        entry.import = joinEntryItem(join(import.meta.dirname, '../devtools/content-script/index.ts'), entry.import)
+        return entry
+    }
+
+    async function addHTMLEntry(
+        chunks: string[],
+        filename: string,
+        template: TemplateType,
+        perf: boolean,
+        options?: import('html-webpack-plugin').Options,
+    ) {
+        let content
+        if (template === TemplateType.Background) {
+            content = await pages.noLoading
+            content = content.replace(`<!-- Gun -->`, '<script src="/js/gun.js"></script>')
+        } else if (template === TemplateType.NoLoading) {
+            content = await pages.noLoading
+        } else if (template === TemplateType.Loading) {
+            content = await pages.loading
+        } else throw new Error()
+        if (perf) content = content.replace(`<!-- Profiling -->`, '<script src="/js/perf-measure.js"></script>')
+        return new (rspack?.HtmlRspackPlugin || (await import('html-webpack-plugin')).default)({
+            // @ts-expect-error // TODO
+            chunks,
+            filename,
+            // @ts-expect-error // TODO
+            templateContent: content,
+            inject: 'body',
+            scriptLoading: 'defer',
+            // @ts-expect-error // TODO
+            minify: false,
+            ...options,
+        })
     }
 }
-function addHTMLEntry(
-    options: HTMLPlugin.Options & {
-        gun?: boolean
-        lockdown: boolean
-    },
-) {
-    let templateContent = readFileSync(join(__dirname, './template.html'), 'utf8')
-    if (options.gun) {
-        templateContent = templateContent.replace(`<!-- Gun -->`, '<script src="/gun.js"></script>')
-    }
-    if (options.lockdown) {
-        templateContent = templateContent.replace(
-            `<!-- lockdown -->`,
-            `<script src="/polyfill/lockdown.js"></script>
-        <script src="/lockdown.js"></script>`,
-        )
-    }
-    return new HTMLPlugin({
-        templateContent,
-        inject: 'body',
-        scriptLoading: 'defer',
-        minify: false,
-        ...options,
-    })
+
+enum TemplateType {
+    Loading,
+    NoLoading,
+    Background,
+}
+const pages = {
+    loading: readFile(join(import.meta.dirname, './with-loading.html'), 'utf8'),
+    noLoading: readFile(join(import.meta.dirname, './with-no-loading.html'), 'utf8'),
 }

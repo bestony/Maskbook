@@ -6,9 +6,9 @@ import {
     ProfileIdentifier,
     type ProfileInformationFromNextID,
     RelationFavor,
+    MaskMessages,
 } from '@masknet/shared-base'
 import { NextIDProof } from '@masknet/web3-providers'
-import { MaskMessages } from '../../../../shared/messages.js'
 import { storeAvatar } from '../../../database/avatar-cache/avatar.js'
 import {
     attachProfileDB,
@@ -25,9 +25,9 @@ import {
 } from '../../../database/persona/db.js'
 import { createOrUpdatePersonaDB, createOrUpdateRelationDB } from '../../../database/persona/web.js'
 
-export interface UpdateProfileInfo {
+interface UpdateProfileInfo {
     nickname?: string | null
-    avatarURL?: string | null
+    avatarURL?: ArrayBuffer | string | null
 }
 export async function updateProfileInfo(identifier: ProfileIdentifier, data: UpdateProfileInfo): Promise<void> {
     if (data.nickname) {
@@ -112,7 +112,7 @@ export async function attachNextIDPersonaToProfile(item: ProfileInformationFromN
         identifier: item.linkedPersona,
         linkedProfiles: new Map(),
         publicKey: await decompressK256Key(item.linkedPersona.rawPublicKey),
-        publicHexKey: item.linkedPersona?.publicKeyAsHex,
+        publicHexKey: item.linkedPersona.publicKeyAsHex,
         nickname: item.nickname,
         hasLogout: false,
         uninitialized: false,

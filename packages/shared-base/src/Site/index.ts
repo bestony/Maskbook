@@ -1,26 +1,32 @@
-import { EnhanceableSite, ExtensionSite } from './type.js'
-
-export * from './type.js'
+import { getEnumAsArray } from '@masknet/kit'
+import { Sniffings } from '../Sniffings/index.js'
+import { ExtensionSite, EnhanceableSite } from './types.js'
 
 const matchEnhanceableSiteHost: Record<EnhanceableSite, RegExp> = {
-    [EnhanceableSite.Localhost]: /localhost/i,
-    [EnhanceableSite.Facebook]: /facebook\.com/i,
-    [EnhanceableSite.Twitter]: /twitter\.com/i,
-    [EnhanceableSite.Minds]: /minds\.com/i,
-    [EnhanceableSite.Instagram]: /instagram\.com/i,
-    [EnhanceableSite.OpenSea]: /opensea\.io/i,
-    [EnhanceableSite.Mirror]: /mirror\.xyz/i,
+    [EnhanceableSite.Localhost]: /^localhost$/i,
+    [EnhanceableSite.Facebook]: /(^|\.)facebook\.com$/i,
+    [EnhanceableSite.Twitter]: /(^|\.)(twitter|x)\.com$/i,
+    [EnhanceableSite.Minds]: /(^|\.)minds\.com$/i,
+    [EnhanceableSite.Instagram]: /(^|\.)instagram\.com$/i,
+    [EnhanceableSite.OpenSea]: /(^|\.)opensea\.io$/i,
+    [EnhanceableSite.Mirror]: /(^|\.)mirror\.xyz$/i,
+    [EnhanceableSite.Firefly]:
+        process.env.NODE_ENV === 'production' ?
+            /(?:^(?:firefly\.|firefly-staging\.|firefly-canary\.)?mask\.social|[\w-]+\.vercel\.app)$/i
+        :   /^localhost:\d+$/,
 }
 
 const matchExtensionSitePathname: Record<ExtensionSite, RegExp> = {
     [ExtensionSite.Dashboard]: /dashboard\.html/i,
     [ExtensionSite.Popup]: /popups\.html/i,
-    [ExtensionSite.PopupConnect]: /popups-connect\.html/i,
+    [ExtensionSite.Swap]: /swap\.html/i,
 }
 
-export function getEnhanceableSiteType(url?: string) {
-    const { host } = location
-    const target = url ?? host
+export const EnhanceableSiteList = getEnumAsArray(EnhanceableSite).map((x) => x.value)
+export const ExtensionSiteList = getEnumAsArray(ExtensionSite).map((x) => x.value)
+
+export function getEnhanceableSiteType() {
+    const target = location.host
     for (const [type, regexp] of Object.entries(matchEnhanceableSiteHost)) {
         if (target.match(regexp)) return type as EnhanceableSite
         continue
@@ -28,9 +34,9 @@ export function getEnhanceableSiteType(url?: string) {
     return
 }
 
-function getExtensionSiteType(url?: string) {
-    const { pathname } = location
-    const target = url ?? pathname
+export function getExtensionSiteType() {
+    if (!location.protocol.includes('extension')) return
+    const target = location.pathname
     for (const [type, regexp] of Object.entries(matchExtensionSitePathname)) {
         if (target.match(regexp)) return type as ExtensionSite
         continue
@@ -38,15 +44,15 @@ function getExtensionSiteType(url?: string) {
     return
 }
 
-export function getSiteType(url?: string) {
-    return getEnhanceableSiteType(url) ?? getExtensionSiteType(url)
+export function getSiteType() {
+    return getEnhanceableSiteType() ?? getExtensionSiteType()
 }
 
 export function getAgentType() {
-    if (isEdge()) return 'edge'
-    if (isOpera()) return 'opera'
-    if (isFirefox()) return 'firefox'
-    if (isChromium()) return 'chromium'
+    if (Sniffings.is_edge) return 'edge'
+    if (Sniffings.is_opera) return 'opera'
+    if (Sniffings.is_firefox) return 'firefox'
+    if (Sniffings.is_chromium) return 'chromium'
     return 'unknown'
 }
 
@@ -58,33 +64,26 @@ export function isExtensionSiteType() {
     return !!getExtensionSiteType()
 }
 
-export function isChromium() {
-    return process.env.engine === 'chromium'
+/**
+ * The metamask browser provider is available in the page.
+ * @returns
+ */
+export function isEthereumInjected(name = 'ethereum') {
+    if (typeof window === 'undefined') return false
+    return typeof Reflect.get(window, name) !== 'undefined'
 }
 
-export function isEdge() {
-    return globalThis.navigator.userAgent.includes('Edg')
-}
-
-export function isFirefox() {
-    return process.env.engine === 'firefox'
-}
-
-export function isEthereumInjected() {
-    return !isExtensionSiteType() && !isFirefox()
-}
-
-export function isOpera() {
-    return globalThis.navigator?.userAgent.includes('OPR/')
-}
-
-export function isTwitter() {
-    return location.href.includes(EnhanceableSite.Twitter)
+/**
+ * The metamask browser provider (for extension's content page) is available in the page.
+ * @returns
+ */
+export function isInPageEthereumInjected() {
+    return !isExtensionSiteType() && !Sniffings.is_firefox
 }
 
 export function getExtensionId(): string | undefined {
     try {
-        if (isChromium() || isOpera() || isEdge()) {
+        if (Sniffings.is_chromium || Sniffings.is_opera || Sniffings.is_edge) {
             // @ts-expect-error this package should not access browser global. It makes this package non-portable.
             return browser.runtime.getURL('').match(/chrome-extension:\/\/([a-z]{32})/)?.[1] ?? ''
         }

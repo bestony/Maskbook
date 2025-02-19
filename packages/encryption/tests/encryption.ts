@@ -11,7 +11,7 @@ import {
     parsePayload,
     importAESFromJWK,
 } from '../src/index.js'
-import { ProfileIdentifier } from '@masknet/base'
+import { ProfileIdentifier, type AESCryptoKey } from '@masknet/base'
 import { makeTypedMessageText, makeTypedMessageTupleSerializable } from '@masknet/typed-message'
 import {
     deriveAESKey,
@@ -22,19 +22,35 @@ import {
     getTestRandomECKey,
     queryTestPublicKey,
 } from './keys.js'
+import { exportCryptoKeyToJWK } from '../src/utils/crypto.js'
+import { None } from 'ts-results-es'
 
 const publicTarget: EncryptOptions['target'] = {
     type: 'public',
 }
+const alice = ProfileIdentifier.of('localhost', 'alice')
 const example: EncryptOptions = {
     version: -38,
-    author: ProfileIdentifier.of('localhost', 'alice').unwrap(),
+    author: alice,
+    authorPublicKey: await queryTestPublicKey(alice.unwrap()),
     message: makeTypedMessageText('hello world'),
     target: publicTarget,
     network: 'localhost',
 }
+function createSetPostKeyCache() {
+    const { promise: setPostKeyCacheSuccess, resolve, reject } = Promise.withResolvers()
+    return {
+        async setPostKeyCache(key: AESCryptoKey) {
+            // the key must can be extracted
+            exportCryptoKeyToJWK(key)
+                .then((x) => x.unwrap())
+                .then(resolve, reject)
+        },
+        setPostKeyCacheSuccess,
+    }
+}
 test('v37 public encryption', async () => {
-    await testSet('minimal v37', { ...example, version: -37 })
+    await testSet('minimal v37', { ...example, authorPublicKey: None, version: -37 })
 
     await testSet(
         'full v37',
@@ -43,17 +59,19 @@ test('v37 public encryption', async () => {
             target: publicTarget,
             message: complexMessage(),
             author: example.author,
+            authorPublicKey: example.authorPublicKey,
             network: 'localhost',
         },
+        minimalEncryptIO,
         {
-            ...minimalEncryptIO,
-            queryPublicKey: queryTestPublicKey,
+            ...minimalDecryptIO,
+            setPostKeyCache: returnVoid,
         },
     )
 })
 
 test('v38 public encryption', async () => {
-    await testSet('minimal v38', example)
+    await testSet('minimal v38', { ...example, authorPublicKey: None })
 
     await testSet(
         'full v38',
@@ -62,23 +80,27 @@ test('v38 public encryption', async () => {
             target: publicTarget,
             message: makeTypedMessageText('hello world'),
             author: example.author,
+            authorPublicKey: example.authorPublicKey,
             network: 'localhost',
         },
+        minimalEncryptIO,
         {
-            ...minimalEncryptIO,
-            queryPublicKey: queryTestPublicKey,
+            ...minimalDecryptIO,
+            setPostKeyCache: returnVoid,
         },
     )
 })
 
 test('v37 E2E encryption', async () => {
+    const bob = ProfileIdentifier.of('localhost', 'bob')
     const payload: EncryptOptions = {
         network: 'localhost',
-        author: ProfileIdentifier.of('localhost', 'bob').unwrap(),
+        author: bob,
+        authorPublicKey: await queryTestPublicKey(bob.unwrap()),
         message: makeTypedMessageText('hello world'),
         target: {
             type: 'E2E',
-            target: [ProfileIdentifier.of('localhost', 'jack').unwrap()],
+            target: [(await queryTestPublicKey(ProfileIdentifier.of('localhost', 'jack').unwrap())).unwrap()],
         },
         version: -37,
     }
@@ -86,7 +108,6 @@ test('v37 E2E encryption', async () => {
     const encrypted = await encrypt(payload, {
         encryptByLocalKey: reject,
         deriveAESKey: reject,
-        queryPublicKey: queryTestPublicKey,
         getRandomAESKey: getTestRandomAESKey(),
         getRandomECKey: getTestRandomECKey(),
         getRandomValues: getRandomValues(),
@@ -99,21 +120,26 @@ test('v37 E2E encryption', async () => {
     // decrypt as author
     {
         const result: any[] = []
+        const { setPostKeyCache, setPostKeyCacheSuccess } = createSetPostKeyCache()
         const decryptIO: DecryptIO = {
             ...minimalDecryptIO,
+            setPostKeyCache,
             deriveAESKey: deriveAESKey('bob', 'array'),
         }
         for await (const progress of decrypt({ message: parsed }, decryptIO)) {
             result.push(progress)
         }
         expect(result).toMatchSnapshot('decrypted as author')
+        await setPostKeyCacheSuccess
     }
 
     // decrypt as jack
     {
         const result: any[] = []
+        const { setPostKeyCache, setPostKeyCacheSuccess } = createSetPostKeyCache()
         const decryptIO: DecryptIO = {
             ...minimalDecryptIO,
+            setPostKeyCache,
             deriveAESKey: deriveAESKey('jack', 'array'),
             async *queryPostKey_version37() {
                 for (const [, each] of encrypted.e2e!) {
@@ -126,6 +152,7 @@ test('v37 E2E encryption', async () => {
             result.push(progress)
         }
         expect(result).toMatchSnapshot('decrypted as jack')
+        await setPostKeyCacheSuccess
     }
 
     // append another receiver
@@ -133,13 +160,12 @@ test('v37 E2E encryption', async () => {
         {
             iv: encrypted.identifier.toIV(),
             postAESKey: encrypted.postKey,
-            target: [ProfileIdentifier.of('localhost', 'joey').unwrap()],
+            target: [(await queryTestPublicKey(ProfileIdentifier.of('localhost', 'joey').unwrap())).unwrap()],
             version: -37,
         },
         {
             getRandomValues: getRandomValues(),
             getRandomECKey: getTestRandomECKey(),
-            queryPublicKey: queryTestPublicKey,
             deriveAESKey: reject,
         },
     )
@@ -148,8 +174,10 @@ test('v37 E2E encryption', async () => {
     // decrypt as joey
     {
         const result: any[] = []
+        const { setPostKeyCache, setPostKeyCacheSuccess } = createSetPostKeyCache()
         const decryptIO: DecryptIO = {
             ...minimalDecryptIO,
+            setPostKeyCache,
             deriveAESKey: deriveAESKey('joey', 'array'),
             async *queryPostKey_version37() {
                 for (const [, each] of appendResult) {
@@ -162,16 +190,19 @@ test('v37 E2E encryption', async () => {
             result.push(progress)
         }
         expect(result).toMatchSnapshot('decrypted as joey')
+        await setPostKeyCacheSuccess
     }
 })
 test('v38 E2E encryption', async () => {
+    const bob = ProfileIdentifier.of('localhost', 'bob')
     const payload: EncryptOptions = {
         network: 'localhost',
-        author: ProfileIdentifier.of('localhost', 'bob').unwrap(),
+        author: bob,
+        authorPublicKey: await queryTestPublicKey(bob.unwrap()),
         message: makeTypedMessageText('hello world'),
         target: {
             type: 'E2E',
-            target: [ProfileIdentifier.of('localhost', 'jack').unwrap()],
+            target: [(await queryTestPublicKey(ProfileIdentifier.of('localhost', 'jack').unwrap())).unwrap()],
         },
         version: -38,
     }
@@ -180,7 +211,6 @@ test('v38 E2E encryption', async () => {
     const encrypted = await encrypt(payload, {
         encryptByLocalKey: encryptByBobLocalKey,
         deriveAESKey: deriveAESKey('bob', 'single'),
-        queryPublicKey: queryTestPublicKey,
         getRandomAESKey: getTestRandomAESKey(),
         getRandomECKey: getTestRandomECKey(),
         getRandomValues: getRandomValues(),
@@ -193,8 +223,10 @@ test('v38 E2E encryption', async () => {
     // decrypt as author
     {
         const result: any[] = []
+        const { setPostKeyCache, setPostKeyCacheSuccess } = createSetPostKeyCache()
         const decryptIO: DecryptIO = {
             ...minimalDecryptIO,
+            setPostKeyCache,
             decryptByLocalKey: (a, b, c) => decryptByBobLocalKey(b, c),
             hasLocalKeyOf: async () => true,
         }
@@ -202,13 +234,16 @@ test('v38 E2E encryption', async () => {
             result.push(progress)
         }
         expect(result).toMatchSnapshot('decrypted as author')
+        await setPostKeyCacheSuccess
     }
 
     // decrypt as jack
     {
         const result: any[] = []
+        const { setPostKeyCache, setPostKeyCacheSuccess } = createSetPostKeyCache()
         const decryptIO: DecryptIO = {
             ...minimalDecryptIO,
+            setPostKeyCache,
             deriveAESKey: deriveAESKey('jack', 'array'),
             async *queryPostKey_version38() {
                 for (const [, each] of encrypted.e2e!) {
@@ -222,6 +257,7 @@ test('v38 E2E encryption', async () => {
             result.push(progress)
         }
         expect(result).toMatchSnapshot('decrypted as jack')
+        await setPostKeyCacheSuccess
     }
 
     // append another receiver
@@ -229,13 +265,12 @@ test('v38 E2E encryption', async () => {
         {
             iv: encrypted.identifier.toIV(),
             postAESKey: encrypted.postKey,
-            target: [ProfileIdentifier.of('localhost', 'joey').unwrap()],
+            target: [(await queryTestPublicKey(ProfileIdentifier.of('localhost', 'joey').unwrap())).unwrap()],
             version: -38,
         },
         {
             getRandomValues: getRandomValues(),
             getRandomECKey: getTestRandomECKey(),
-            queryPublicKey: queryTestPublicKey,
             deriveAESKey: deriveAESKey('bob', 'single'),
         },
     )
@@ -244,8 +279,10 @@ test('v38 E2E encryption', async () => {
     // decrypt as joey
     {
         const result: any[] = []
+        const { setPostKeyCache, setPostKeyCacheSuccess } = createSetPostKeyCache()
         const decryptIO: DecryptIO = {
             ...minimalDecryptIO,
+            setPostKeyCache,
             deriveAESKey: deriveAESKey('joey', 'array'),
             async *queryPostKey_version38() {
                 for (const [, each] of appendResult) {
@@ -259,6 +296,7 @@ test('v38 E2E encryption', async () => {
             result.push(progress)
         }
         expect(result).toMatchSnapshot('decrypted as joey')
+        await setPostKeyCacheSuccess
     }
 })
 
@@ -266,7 +304,7 @@ async function testSet(
     key: string,
     options: EncryptOptions,
     io = minimalEncryptIO,
-    decryptIO = minimalDecryptIO,
+    decryptIO: DecryptIO = minimalDecryptIO as any,
     waitE2E = false,
 ) {
     const a = await encrypt(options, io)
@@ -276,6 +314,8 @@ async function testSet(
     expect(a1).toMatchSnapshot(key + ' parsed')
 
     const result: any[] = []
+    const { setPostKeyCache, setPostKeyCacheSuccess } = createSetPostKeyCache()
+    if (decryptIO === minimalDecryptIO) decryptIO = { ...decryptIO, setPostKeyCache }
     for await (const a2 of decrypt({ message: a1 }, decryptIO)) {
         result.push(a2)
 
@@ -289,10 +329,10 @@ async function testSet(
         }
     }
     expect(result).toMatchSnapshot(key + ' decrypted')
+    if (decryptIO === minimalDecryptIO) await setPostKeyCacheSuccess
 }
 
 const minimalEncryptIO: EncryptIO = {
-    queryPublicKey: returnNull,
     deriveAESKey: reject,
     encryptByLocalKey: reject,
 
@@ -300,7 +340,7 @@ const minimalEncryptIO: EncryptIO = {
     getRandomValues: mockIV,
     getRandomAESKey: returnTestKey,
 }
-const minimalDecryptIO: DecryptIO = {
+const minimalDecryptIO: Omit<DecryptIO, 'setPostKeyCache'> = {
     decryptByLocalKey: reject,
     deriveAESKey: reject,
     getPostKeyCache: returnNull,
@@ -310,7 +350,6 @@ const minimalDecryptIO: DecryptIO = {
     queryPostKey_version38: rejectGenerator,
     queryPostKey_version39: rejectGenerator,
     queryPostKey_version40: reject,
-    setPostKeyCache: returnVoid,
 }
 function mockIV(arr: Uint8Array) {
     arr.set([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15])

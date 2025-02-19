@@ -2,11 +2,12 @@ import { Icons } from '@masknet/icons'
 import { AssetPreviewer, InjectedDialog, type InjectedDialogProps, TokenIcon } from '@masknet/shared'
 import { makeStyles } from '@masknet/theme'
 import type { Web3Helper } from '@masknet/web3-helpers'
-import { useNonFungibleAsset, useWeb3State } from '@masknet/web3-hooks-base'
+import { useNonFungibleAsset } from '@masknet/web3-hooks-base'
 import { TokenType } from '@masknet/web3-shared-base'
 import { Box, Button, DialogActions, DialogContent, Typography } from '@mui/material'
-import type { FC, PropsWithChildren } from 'react'
-import { useSharedI18N } from '../../../locales/index.js'
+import type { PropsWithChildren } from 'react'
+import { Trans } from '@lingui/react/macro'
+import type React from 'react'
 
 const useStyles = makeStyles()((theme) => ({
     confirmDialog: {
@@ -27,7 +28,6 @@ const useStyles = makeStyles()((theme) => ({
     },
 
     congratulation: {
-        fontFamily: 'Helvetica',
         fontWeight: 700,
         fontSize: '20px',
         lineHeight: '24px',
@@ -42,7 +42,6 @@ const useStyles = makeStyles()((theme) => ({
     },
     nftName: {
         display: 'flex',
-        fontFamily: 'Helvetica',
         marginTop: 10,
     },
     nftMessage: {
@@ -66,47 +65,42 @@ const useStyles = makeStyles()((theme) => ({
     tokenIcon: {
         margin: 'auto',
         border: `1px ${theme.palette.maskColor.secondaryLine} solid`,
+        borderRadius: '50%',
+    },
+    icon: {
+        filter: 'drop-shadow(0px 6px 12px rgba(61, 194, 51, 0.20))',
+        backdropFilter: 'blur(8px)',
     },
 }))
 
 export interface TokenTransactionConfirmModalProps extends PropsWithChildren<InjectedDialogProps> {
-    amount: string | null
     token?: Web3Helper.FungibleTokenAll | null
     nonFungibleTokenId?: string | null
     nonFungibleTokenAddress?: string
     tokenType: TokenType
     messageTextForNFT?: string
     messageTextForFT?: string
-    confirmText?: string
+    confirmText?: React.ReactNode
     onConfirm?(): void
 }
 
-export const TokenTransactionConfirmModal: FC<TokenTransactionConfirmModalProps> = ({
+export function TokenTransactionConfirmModal({
     className,
-    confirmText,
+    confirmText = 'Confirm',
     onConfirm,
     children,
     messageTextForNFT,
     messageTextForFT,
-    amount,
     tokenType,
     token,
     nonFungibleTokenAddress,
     nonFungibleTokenId,
     onClose,
     ...rest
-}) => {
-    const { Others } = useWeb3State()
+}: TokenTransactionConfirmModalProps) {
     const { classes } = useStyles()
-    const t = useSharedI18N()
-    confirmText = confirmText || 'Confirm'
     const isToken = tokenType === TokenType.Fungible
-    const { value: nonFungibleToken } = useNonFungibleAsset(
-        undefined,
-        nonFungibleTokenAddress,
-        nonFungibleTokenId ?? '',
-    )
-    const uiTokenId = Others?.formatTokenId(nonFungibleToken?.tokenId)
+    const { data: nonFungibleToken } = useNonFungibleAsset(undefined, nonFungibleTokenAddress, nonFungibleTokenId ?? '')
     return (
         <InjectedDialog
             classes={{
@@ -121,24 +115,29 @@ export const TokenTransactionConfirmModal: FC<TokenTransactionConfirmModalProps>
             onClose={onClose}
             {...rest}>
             <DialogContent className={classes.content}>
-                {isToken ? (
+                {isToken ?
                     <Box>
-                        <TokenIcon
-                            className={classes.tokenIcon}
-                            address={token?.address || ''}
-                            logoURL={token?.logoURL}
-                            size={90}
-                        />
+                        {token ?
+                            <TokenIcon
+                                className={classes.tokenIcon}
+                                address={token.address}
+                                logoURL={token.logoURL}
+                                name={token.symbol ?? token.name}
+                                pluginID={token.runtime}
+                                chainId={token.chainId}
+                                badgeSize={20}
+                                size={90}
+                            />
+                        :   <Icons.FillSuccess className={classes.icon} size={90} />}
                         <Typography className={classes.congratulation} mt="19.5px">
-                            {t.congratulations()}
+                            <Trans>Congratulations!</Trans>
                         </Typography>
                         <Typography className={classes.messageText} mt="41px">
                             {messageTextForFT}
                         </Typography>
                     </Box>
-                ) : (
-                    <div className={classes.nftMessage}>
-                        {nonFungibleToken ? (
+                :   <div className={classes.nftMessage}>
+                        {nonFungibleToken ?
                             <>
                                 <div className={classes.nftContainer}>
                                     <AssetPreviewer
@@ -147,23 +146,22 @@ export const TokenTransactionConfirmModal: FC<TokenTransactionConfirmModalProps>
                                 </div>
                                 <div className={classes.nftName}>
                                     <Typography fontWeight={700} fontSize={20} lineHeight="24px">
-                                        {nonFungibleToken?.metadata?.name}
+                                        {nonFungibleToken.metadata?.name}
                                     </Typography>
-                                    <Typography fontWeight={700} fontSize={16} mx="7px">
-                                        {uiTokenId}
-                                    </Typography>
-                                    {nonFungibleToken.collection?.verified ? <Icons.Verified size={21.43} /> : null}
+                                    {nonFungibleToken.collection?.verified ?
+                                        <Icons.Verification size={21.43} />
+                                    :   null}
                                 </div>
                             </>
-                        ) : null}
+                        :   null}
                         <Typography className={classes.congratulation} mt="24px">
-                            {t.congratulations()}
+                            <Trans>Congratulations!</Trans>
                         </Typography>
                         <Typography className={classes.nftMessageText} mt="14px">
                             {messageTextForNFT}
                         </Typography>
                     </div>
-                )}
+                }
             </DialogContent>
             <DialogActions className={classes.actions}>
                 <Button fullWidth onClick={onConfirm}>

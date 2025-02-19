@@ -1,65 +1,76 @@
-import { Box, Stack } from '@mui/material'
-import { type ReactNode, useRef, useEffect, useState } from 'react'
-import { MaskTextField } from '../TextField/index.js'
+import { useRef, useEffect, useState, type ReactNode } from 'react'
+import { type MaskTextFieldProps } from '../TextField/index.js'
 import { CountdownButton } from '../CountdownButton/index.js'
+import { makeStyles } from '../../UIHelper/index.js'
+import { TextField } from '@mui/material'
 
-export interface SendingCodeFieldProps {
-    label?: ReactNode
-    sendButtonText?: string
-    errorMessage?: string
-    disabled?: boolean
+const useStyles = makeStyles()((theme) => ({
+    countdown: {
+        fontSize: 14,
+        color: theme.palette.maskColor.main,
+        whiteSpace: 'nowrap',
+        height: 24,
+        boxSizing: 'border-box',
+    },
+}))
+
+export interface SendingCodeFieldProps extends Omit<MaskTextFieldProps, 'onChange' | 'onBlur'> {
+    sendButtonText?: ReactNode
+    errorMessage?: ReactNode
     autoSend?: boolean
+    resendDisabled?: boolean
     onBlur?(code: string): void
     onChange?(code: string): void
     onSend?(): void
 }
-export const SendingCodeField = ({
+export function SendingCodeField({
     onSend,
     sendButtonText = 'Send',
-    label,
     errorMessage,
     onBlur,
     disabled = false,
+    resendDisabled,
     autoSend = false,
     onChange,
-}: SendingCodeFieldProps) => {
-    const [code, setCode] = useState<string>('')
+    ...rest
+}: SendingCodeFieldProps) {
+    const { classes } = useStyles()
+    const [code, setCode] = useState('')
     const sendButton = useRef<HTMLButtonElement>(null)
-
-    useEffect(() => {
-        onChange?.(code)
-    }, [code])
 
     useEffect(() => {
         if (autoSend) sendButton.current?.click()
     }, [autoSend])
 
     return (
-        <Box>
-            <Box>{label}</Box>
-            <Box>
-                <Stack alignItems="flex-start" direction="row" spacing={1}>
-                    <Box flex={1}>
-                        <MaskTextField
-                            size="small"
-                            value={code}
-                            onChange={(event) => setCode(event.target.value)}
-                            error={!!errorMessage}
-                            helperText={errorMessage}
-                            onBlur={() => onBlur?.(code)}
-                            disabled={disabled}
-                        />
-                    </Box>
+        <TextField
+            size="small"
+            value={code}
+            onChange={(event) => {
+                setCode(event.target.value)
+                onChange?.(event.target.value)
+            }}
+            error={!!errorMessage}
+            helperText={errorMessage}
+            onBlur={() => onBlur?.(code)}
+            disabled={disabled}
+            autoComplete="off"
+            InputProps={{
+                disableUnderline: true,
+                endAdornment: (
                     <CountdownButton
                         ref={sendButton}
-                        size="medium"
-                        sx={{ height: '40px', width: '100px' }}
+                        className={classes.countdown}
+                        size="small"
+                        variant="text"
+                        sx={{ px: 0 }}
                         onClick={onSend}
-                        disabled={disabled}>
+                        disabled={resendDisabled || disabled}>
                         {sendButtonText}
                     </CountdownButton>
-                </Stack>
-            </Box>
-        </Box>
+                ),
+            }}
+            {...rest}
+        />
     )
 }

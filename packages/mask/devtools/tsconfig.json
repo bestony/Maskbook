@@ -1,11 +1,9 @@
 {
-  "extends": "../../../tsconfig.json",
+  "extends": "../../../tsconfig.leaf.json",
   "compilerOptions": {
     "rootDir": "./",
-    "outDir": "../dist/devtools/",
-    "tsBuildInfoFile": "../dist/devtools.tsbuildinfo",
-    "emitDeclarationOnly": true
+    "tsBuildInfoFile": "../dist/devtools.tsbuildinfo"
   },
   "include": ["./"],
-  "references": [{ "path": "../shared" }]
+  "references": [{ "path": "../../flags/tsconfig.json" }, { "path": "../../shared-base/tsconfig.json" }]
 }

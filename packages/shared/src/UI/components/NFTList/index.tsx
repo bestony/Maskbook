@@ -1,12 +1,14 @@
-import { type FC, useCallback, useRef } from 'react'
-import { noop } from 'lodash-es'
+import { useCallback, useEffect, useMemo } from 'react'
+import { noop, range } from 'lodash-es'
 import type { Web3Helper } from '@masknet/web3-helpers'
 import { ElementAnchor, AssetPreviewer, RetryHint } from '@masknet/shared'
-import { LoadingBase, makeStyles, ShadowRootTooltip } from '@masknet/theme'
-import { CrossIsolationMessages, NetworkPluginID } from '@masknet/shared-base'
+import { makeStyles, ShadowRootTooltip, TextOverflowTooltip } from '@masknet/theme'
+import { CrossIsolationMessages, NetworkPluginID, type PageIndicator } from '@masknet/shared-base'
+import { useWeb3Hub, useWeb3Utils } from '@masknet/web3-hooks-base'
 import { isSameAddress } from '@masknet/web3-shared-base'
-import { useWeb3State } from '@masknet/web3-hooks-base'
-import { Checkbox, List, ListItem, Radio, Stack, Typography } from '@mui/material'
+import { Checkbox, List, ListItem, Radio, Stack, Typography, type ListProps, Skeleton } from '@mui/material'
+import { isLens, resolveImageURL } from '@masknet/web3-shared-evm'
+import { useInfiniteQuery } from '@tanstack/react-query'
 
 interface NFTItemProps {
     token: Web3Helper.NonFungibleTokenAll
@@ -14,21 +16,6 @@ interface NFTItemProps {
 }
 
 export type NFTKeyPair = [address: string, tokenId: string]
-
-interface Props {
-    selectable?: boolean
-    tokens: Web3Helper.NonFungibleAssetScope[]
-    selectedPairs?: NFTKeyPair[]
-    onChange?: (id: string | null, contractAddress?: string) => void
-    limit?: number
-    columns?: number
-    gap?: number
-    className?: string
-    onNextPage(): void
-    finished: boolean
-    hasError?: boolean
-    pluginID: NetworkPluginID
-}
 
 const useStyles = makeStyles<{ columns?: number; gap?: number }>()((theme, { columns = 4, gap = 12 }) => {
     const isLight = theme.palette.mode === 'light'
@@ -87,6 +74,10 @@ const useStyles = makeStyles<{ columns?: number; gap?: number }>()((theme, { col
             opacity: 0.5,
         },
         fallbackImage: {
+            width: 30,
+            height: 30,
+        },
+        fallbackENSImage: {
             width: '100%',
             height: '100%',
         },
@@ -111,13 +102,10 @@ const useStyles = makeStyles<{ columns?: number; gap?: number }>()((theme, { col
     }
 })
 
-export const NFTItem: FC<NFTItemProps> = ({ token, pluginID }) => {
+export function NFTItem({ token, pluginID }: NFTItemProps) {
     const { classes } = useStyles({})
-    const { Others } = useWeb3State(pluginID)
-    const caption = Others?.formatTokenId(token.tokenId, 4)
-    const captionRef = useRef<HTMLDivElement>(null)
-
-    const showTooltip = captionRef.current ? captionRef.current.offsetWidth !== captionRef.current.scrollWidth : false
+    const Utils = useWeb3Utils(pluginID)
+    const caption = isLens(token.metadata?.name) ? token.metadata?.name : Utils.formatTokenId(token.tokenId, 4)
 
     const onClick = useCallback(() => {
         if (!token.chainId || !pluginID) return
@@ -130,83 +118,121 @@ export const NFTItem: FC<NFTItemProps> = ({ token, pluginID }) => {
         })
     }, [pluginID, token.chainId, token.tokenId, token.address])
 
+    const fallbackImageURL = resolveImageURL(
+        undefined,
+        token.metadata?.name,
+        token.collection?.name,
+        token.contract?.address,
+    )
     return (
         <div className={classes.nftContainer} onClick={onClick}>
             <AssetPreviewer
                 url={token.metadata?.imageURL ?? token.metadata?.imageURL}
                 classes={{
-                    fallbackImage: classes.fallbackImage,
+                    fallbackImage: fallbackImageURL ? classes.fallbackENSImage : classes.fallbackImage,
                     container: classes.image,
                     root: classes.root,
                 }}
+                fallbackImage={fallbackImageURL}
             />
-            <ShadowRootTooltip title={showTooltip ? caption : undefined} placement="bottom" disableInteractive arrow>
-                <Typography ref={captionRef} className={classes.caption}>
-                    {Others?.isValidDomain(token.metadata?.name) || pluginID === NetworkPluginID.PLUGIN_SOLANA
-                        ? token.metadata?.name
-                        : caption}
+            <TextOverflowTooltip as={ShadowRootTooltip} title={caption} disableInteractive arrow placement="bottom">
+                <Typography className={classes.caption}>
+                    {Utils.isValidDomain(token.metadata?.name ?? '') || pluginID === NetworkPluginID.PLUGIN_SOLANA ?
+                        token.metadata?.name
+                    :   caption}
                 </Typography>
-            </ShadowRootTooltip>
+            </TextOverflowTooltip>
         </div>
     )
 }
 
-export const NFTList: FC<Props> = ({
+export function NFTItemSkeleton() {
+    const { classes } = useStyles({})
+    return (
+        <div className={classes.nftContainer}>
+            <Skeleton variant="rectangular" height={126} width={126} />
+            <Skeleton variant="text" className={classes.caption} />
+        </div>
+    )
+}
+
+interface Props extends Omit<ListProps, 'onChange'> {
+    pluginID: NetworkPluginID
+    chainId: Web3Helper.ChainIdAll
+    selectable?: boolean
+    /** SimpleHash collection */
+    collectionId?: string
+    selectedPairs?: NFTKeyPair[]
+    onChange?: (id: string | null, contractAddress?: string) => void
+    limit?: number
+    columns?: number
+    gap?: number
+}
+export function NFTList({
     selectable,
     selectedPairs,
-    tokens,
+    collectionId,
     onChange,
     limit = 1,
     columns = 4,
     gap = 12,
     className,
-    onNextPage,
-    finished,
     pluginID,
-    hasError,
-}) => {
+    chainId,
+    ...rest
+}: Props) {
     const { classes, cx } = useStyles({ columns, gap })
 
-    const isRadio = limit === 1
     const reachedLimit = selectedPairs && selectedPairs.length >= limit
 
-    const { Others } = useWeb3State(pluginID)
-
-    const toggleItem = useCallback(
-        (currentId: string | null, contractAddress?: string) => {
-            onChange?.(currentId, contractAddress)
-        },
-        [onChange],
-    )
+    const toggleItem = (currentId: string | null, contractAddress?: string) => {
+        onChange?.(currentId, contractAddress)
+    }
     const includes: (pairs: NFTKeyPair[], pair: NFTKeyPair) => boolean =
-        pluginID === NetworkPluginID.PLUGIN_EVM
-            ? (pairs, pair) => {
-                  return !!pairs.find(([address, tokenId]) => isSameAddress(address, pair[0]) && tokenId === pair[1])
-              }
-            : (pairs, pair) => {
-                  return !!pairs.find(([, tokenId]) => tokenId === pair[1])
-              }
+        pluginID === NetworkPluginID.PLUGIN_EVM ?
+            (pairs, pair) => !!pairs.find(([address, id]) => isSameAddress(address, pair[0]) && id === pair[1])
+        :   (pairs, pair) => !!pairs.find(([, tokenId]) => tokenId === pair[1])
 
+    const isRadio = limit === 1
     const SelectComponent = isRadio ? Radio : Checkbox
+
+    const Hub = useWeb3Hub(pluginID, { chainId })
+    const { data, isFetching, fetchNextPage, hasNextPage, error } = useInfiniteQuery({
+        queryKey: ['non-fungible-assets', 'by-collection', collectionId, chainId],
+        initialPageParam: undefined as PageIndicator | undefined,
+        queryFn: async ({ pageParam }) => {
+            if (!collectionId) return
+            return Hub.getNonFungibleAssetsByCollection(collectionId, {
+                indicator: pageParam,
+                size: 50,
+                chainId,
+            })
+        },
+        getNextPageParam(lastPage) {
+            return lastPage?.nextIndicator as PageIndicator
+        },
+    })
+    const tokens = useMemo(() => data?.pages.flatMap((x) => x?.data ?? []) ?? [], [data?.pages])
+
+    // Automatically fetch next page if the last page is empty
+    const lastPage = data?.pages.at(-1)?.data
+    useEffect(() => {
+        if (lastPage?.length !== 0) return
+        fetchNextPage()
+    }, [lastPage, fetchNextPage])
+
+    const skeletonSize = columns - (tokens.length % columns)
 
     return (
         <>
-            <List className={cx(classes.list, className)}>
+            <List className={cx(classes.list, className)} {...rest}>
                 {tokens.map((token) => {
-                    const selected = selectedPairs
-                        ? includes(selectedPairs, [token.contract?.address!, token.tokenId])
-                        : false
+                    const selected =
+                        selectedPairs ?
+                            includes(selectedPairs, [token.contract?.address, token.tokenId] as NFTKeyPair)
+                        :   false
                     const inactive = selectedPairs ? selectedPairs.length > 0 && !selected : false
                     const disabled = selectable ? !isRadio && reachedLimit && !selected : false
-                    const link =
-                        token.link ??
-                        (token.contract
-                            ? Others?.explorerResolver?.nonFungibleTokenLink(
-                                  token?.contract?.chainId,
-                                  token?.contract?.address,
-                                  token.tokenId,
-                              )
-                            : undefined)
                     return (
                         <ListItem
                             key={token.tokenId + token.id}
@@ -216,7 +242,7 @@ export const NFTList: FC<Props> = ({
                                 [classes.inactive]: inactive,
                             })}>
                             <NFTItem token={token} pluginID={pluginID} />
-                            {selectable ? (
+                            {selectable ?
                                 <SelectComponent
                                     size="small"
                                     onChange={noop}
@@ -232,18 +258,25 @@ export const NFTList: FC<Props> = ({
                                     className={classes.checkbox}
                                     checked={selected}
                                 />
-                            ) : null}
+                            :   null}
                         </ListItem>
                     )
                 })}
+                {isFetching ?
+                    range(skeletonSize).map((i) => (
+                        <ListItem className={cx(classes.nftItem, classes.inactive)} key={i}>
+                            <NFTItemSkeleton />
+                        </ListItem>
+                    ))
+                :   null}
             </List>
-            {hasError && finished && tokens.length ? (
+            {error && !hasNextPage && tokens.length ?
                 <Stack py={1}>
-                    <RetryHint hint={false} retry={onNextPage} />
+                    <RetryHint hint={false} retry={() => fetchNextPage()} />
                 </Stack>
-            ) : null}
+            :   null}
             <Stack py={1}>
-                <ElementAnchor callback={onNextPage}>{!finished && <LoadingBase />}</ElementAnchor>
+                <ElementAnchor callback={() => fetchNextPage()} />
             </Stack>
         </>
     )

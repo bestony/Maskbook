@@ -11,20 +11,20 @@ const useStyles = makeStyles<Pick<IconProps, 'size'>>()((theme, { size }) => ({
         backgroundSize: 'cover',
         height: size,
         width: size,
+        fontWeight: 700,
     },
 }))
 
-export interface IconProps {
+export interface IconProps extends AvatarProps {
+    color?: string
     size?: number | string
     name?: string
     label?: string
     logoURL?: string
-    className?: string
-    AvatarProps?: Partial<AvatarProps>
 }
 
 export const Icon = memo<IconProps>(function Icon(props) {
-    const { logoURL, AvatarProps, size, name, label, className } = props
+    const { logoURL, size, color, name, label, className, ...rest } = props
     const [failed, setFailed] = useState(false)
 
     const defaultBackgroundImage = name2Image(name)
@@ -37,18 +37,20 @@ export const Icon = memo<IconProps>(function Icon(props) {
         <Avatar
             className={cx(classes.icon, className)}
             src={logoURL}
-            {...AvatarProps}
+            {...rest}
             imgProps={{
-                onError: () => {
+                onError: (event) => {
                     setFailed(true)
+                    rest.imgProps?.onError?.(event)
                 },
+                ...rest.imgProps,
             }}
             sx={{
-                ...AvatarProps?.sx,
+                ...rest.sx,
                 backgroundImage: showImage ? undefined : `url("${defaultBackgroundImage}")`,
-                backgroundColor: showImage ? theme.palette.common.white : undefined,
+                backgroundColor: showImage ? (color ?? theme.palette.common.white) : undefined,
             }}>
-            {label ?? name?.slice(0, 1).toUpperCase()}
+            {label ?? name?.slice(0, 1).toUpperCase() ?? '?'}
         </Avatar>
     )
 })

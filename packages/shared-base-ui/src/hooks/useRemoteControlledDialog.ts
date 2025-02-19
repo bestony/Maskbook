@@ -1,6 +1,5 @@
+import type { PluginMessageEmitterItem } from '@masknet/shared-base'
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { v4 as uuid } from 'uuid'
-import type { UnboundedRegistry } from '@dimensiondev/holoflows-kit'
 
 export interface RemoteControlledDialogEvent {
     open: boolean
@@ -14,11 +13,12 @@ interface Result<T> {
     setDialog: (ev: T) => void
 }
 
+const uuid = () => crypto.randomUUID()
 /**
  * Use a dialog state controlled by remote
  */
 export function useRemoteControlledDialog<T extends { open: boolean }>(
-    event: UnboundedRegistry<T>,
+    event: PluginMessageEmitterItem<T>,
     onUpdateByRemote?: (ev: T) => void,
     tabType: 'self' | 'activated' = 'self',
 ): Result<T> {

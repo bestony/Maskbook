@@ -1,11 +1,11 @@
 {
   "name": "@masknet/web3-constants",
   "private": true,
-  "type": "commonjs",
+  "sideEffects": false,
+  "type": "module",
   "scripts": {
-    "start": "ts-node compile-constants.ts"
+    "start": "npx gulp build-constants"
   },
   "dependencies": {
-    "@masknet/web3-contracts": "workspace:^"
   }
 }

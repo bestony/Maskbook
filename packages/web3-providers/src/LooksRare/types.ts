@@ -1,4 +1,4 @@
-export enum OrderStatus {
+enum OrderStatus {
     CANCELLED = 'CANCELLED',
     ERC_APPROVAL = 'ERC_APPROVAL',
     ERC20_APPROVAL = 'ERC20_APPROVAL',
@@ -9,7 +9,7 @@ export enum OrderStatus {
     VALID = 'VALID',
 }
 
-export enum EventType {
+enum EventType {
     MINT = 'MINT',
     TRANSFER = 'TRANSFER',
     LIST = 'LIST',
@@ -19,22 +19,14 @@ export enum EventType {
     CANCEL_OFFER = 'CANCEL_OFFER',
 }
 
-export enum TokenFlag {
+enum TokenFlag {
     NO_IMAGE = 'NO_IMAGE',
     NONE = 'NONE',
     PORNOGRAPHY = 'PORNOGRAPHY',
     TRIAGE = 'TRIAGE',
 }
 
-export interface Account {
-    address: string
-    profile_img_url: string
-    user?: {
-        username: string
-    }
-}
-
-export interface Attribute {
+interface Attribute {
     traitType: string
     value: string
     displayType: string
@@ -61,19 +53,16 @@ export interface Collection {
 
 export interface Order {
     hash: string
-    collectionAddress: string
-    tokenId?: string
-    isOrderAsk: boolean
+    collection: string
+    itemIds: string[]
+    quoteType: 0 | 1 // There are 2 quote types: Ask (1) or Bid (0).
     signer: string
-    strategy: string
-    currencyAddress: string
-    amount: number
+    strategyId: 0 | 1 // Id of strategy: Standard (0) and Collection (1).
+    currency: string
+    amounts: string[]
     price: string
-    nonce: string
     startTime: number
     endTime: number
-    minPercentageToAsk: number
-    params?: string
     status: OrderStatus
     signature: string
     v?: number

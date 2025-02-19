@@ -1,7 +1,7 @@
 import { gunServers } from './server.js'
 declare const Gun: typeof import('gun')
 
-export type GunRoot = ReturnType<typeof createGun>
+type GunRoot = ReturnType<typeof createGun>
 let gun: GunRoot | undefined
 export function getGunInstance(): GunRoot {
     if (gun) return gun
@@ -34,9 +34,9 @@ function createGun() {
                 {},
             )
         }
-        private declare abort: () => void
-        private declare keepAlive: () => void
-        declare timer: NodeJS.Timer | undefined
+        declare private abort: () => void
+        declare private keepAlive: () => void
+        declare timer: ReturnType<typeof setTimeout> | undefined
         override send(data: any) {
             this.keepAlive()
             super.send(data)
@@ -50,6 +50,7 @@ function createGun() {
     const _ = new Gun({
         peers: [...gunServers],
         localStorage: false,
+        // cspell:disable-next-line
         radisk: true,
         WebSocket,
     })

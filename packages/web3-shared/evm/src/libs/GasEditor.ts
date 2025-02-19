@@ -1,7 +1,6 @@
-import { toHex } from 'web3-utils'
-import { GasOptionType, multipliedBy, toFixed } from '@masknet/web3-shared-base'
+import * as web3_utils from /* webpackDefer: true */ 'web3-utils'
+import { GasOptionType, isZero, multipliedBy, toFixed } from '@masknet/web3-shared-base'
 import { formatWeiToEther } from '../helpers/formatter.js'
-import { chainResolver } from '../helpers/resolver.js'
 import type {
     ChainId,
     EIP1559GasConfig,
@@ -10,12 +9,16 @@ import type {
     PriorEIP1559GasConfig,
     Transaction,
 } from '../types/index.js'
+import { CHAIN_DESCRIPTORS } from '../constants/descriptors.js'
 
 export class GasEditor {
-    constructor(private chainId: ChainId, private config: Partial<GasConfig>) {}
+    constructor(
+        private chainId: ChainId,
+        private config: Partial<GasConfig>,
+    ) {}
 
     private get isEIP1559() {
-        return chainResolver.isSupport(this.chainId, 'EIP1559')
+        return !!CHAIN_DESCRIPTORS.find((x) => x.chainId === this.chainId)?.features?.includes('EIP1559')
     }
 
     private get EIP1559GasOptionConfig() {
@@ -35,7 +38,7 @@ export class GasEditor {
     }
 
     getGasPrice() {
-        return this.EIP1559GasOptionConfig.maxFeePerGas || this.priorEIP1559GasOptionConfig.gasPrice
+        return this.EIP1559GasOptionConfig.maxFeePerGas || this.priorEIP1559GasOptionConfig.gasPrice || '0'
     }
 
     getGasConfig(fallback?: Partial<GasConfig>): GasConfig {
@@ -43,21 +46,30 @@ export class GasEditor {
             const config = fallback as EIP1559GasConfig | undefined
             return {
                 gasPrice: undefined,
-                maxFeePerGas: toHex(this.EIP1559GasOptionConfig.maxFeePerGas) || toHex(config?.maxFeePerGas || '0'),
+                maxFeePerGas:
+                    web3_utils.toHex(this.EIP1559GasOptionConfig.maxFeePerGas) ||
+                    web3_utils.toHex(config?.maxFeePerGas || '0'),
                 maxPriorityFeePerGas:
-                    toHex(this.EIP1559GasOptionConfig.maxPriorityFeePerGas) ||
-                    toHex(config?.maxPriorityFeePerGas || '1'),
-                gasCurrency: this.EIP1559GasOptionConfig?.gasCurrency || fallback?.gasCurrency,
-                gas: this.EIP1559GasOptionConfig.gas ? toHex(this.EIP1559GasOptionConfig.gas) : undefined,
+                    web3_utils.toHex(this.EIP1559GasOptionConfig.maxPriorityFeePerGas) ||
+                    web3_utils.toHex(config?.maxPriorityFeePerGas || '1'),
+                gasCurrency: this.EIP1559GasOptionConfig.gasCurrency || fallback?.gasCurrency,
+                gas:
+                    this.EIP1559GasOptionConfig.gas && !isZero(this.EIP1559GasOptionConfig.gas) ?
+                        web3_utils.toHex(this.EIP1559GasOptionConfig.gas)
+                    :   undefined,
+                gasOptionType: this.config.gasOptionType ?? config?.gasOptionType,
             }
         }
 
         const priorConfig = fallback as PriorEIP1559GasConfig | undefined
 
         return {
-            gasPrice: toHex(this.priorEIP1559GasOptionConfig.gasPrice) || toHex(priorConfig?.gasPrice || '0'),
+            gasPrice:
+                web3_utils.toHex(this.priorEIP1559GasOptionConfig.gasPrice) ||
+                web3_utils.toHex(priorConfig?.gasPrice || '0'),
             maxFeePerGas: undefined,
             maxPriorityFeePerGas: undefined,
+            gasOptionType: this.config.gasOptionType ?? priorConfig?.gasOptionType,
         }
     }
 
@@ -82,23 +94,25 @@ export class GasEditor {
         })
     }
 
-    static fromGasOption(chainId: ChainId, gasOption?: GasOption) {
+    static fromGasOption(chainId: ChainId, gasOption?: GasOption, gasOptionType?: GasOptionType) {
         return new GasEditor(chainId, {
             gasPrice: toFixed(gasOption?.suggestedMaxFeePerGas ?? 0, 0),
             maxFeePerGas: toFixed(gasOption?.suggestedMaxFeePerGas ?? 0, 0),
             maxPriorityFeePerGas: toFixed(gasOption?.suggestedMaxPriorityFeePerGas ?? 0, 0),
+            gasOptionType,
         })
     }
 
     static fromGasOptions(
         chainId: ChainId,
-        gasOptions?: Record<GasOptionType, GasOption>,
+        gasOptions?: Record<GasOptionType, GasOption> | null,
         gasOptionType = GasOptionType.NORMAL,
     ) {
         return new GasEditor(chainId, {
-            gasPrice: toFixed(gasOptions?.[gasOptionType]?.suggestedMaxFeePerGas ?? 0, 0),
-            maxFeePerGas: toFixed(gasOptions?.[gasOptionType]?.suggestedMaxFeePerGas ?? 0, 0),
-            maxPriorityFeePerGas: toFixed(gasOptions?.[gasOptionType]?.suggestedMaxPriorityFeePerGas ?? 0, 0),
+            gasPrice: toFixed(gasOptions?.[gasOptionType].suggestedMaxFeePerGas ?? 0, 0),
+            maxFeePerGas: toFixed(gasOptions?.[gasOptionType].suggestedMaxFeePerGas ?? 0, 0),
+            maxPriorityFeePerGas: toFixed(gasOptions?.[gasOptionType].suggestedMaxPriorityFeePerGas ?? 0, 0),
+            gasOptionType,
         })
     }
 }

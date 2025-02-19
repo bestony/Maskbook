@@ -2,10 +2,10 @@ import { memo, type ReactNode, useCallback, useMemo } from 'react'
 import { Button, Stack } from '@mui/material'
 import { makeStyles } from '@masknet/theme'
 import { Icons } from '@masknet/icons'
-import type { DashboardRoutes, MaskEvents, PersonaInformation, PluginID } from '@masknet/shared-base'
-import { type PersonaConnectStatus, useCurrentPersonaConnectStatus, useSharedI18N } from '../../../index.js'
+import { DashboardRoutes, type PersonaIdentifier, type PersonaInformation, type PluginID } from '@masknet/shared-base'
+import { type PersonaConnectStatus, useCurrentPersonaConnectStatus } from '../../../index.js'
 import type { IdentityResolved } from '@masknet/plugin-infra'
-import type { UnboundedRegistry, WebExtensionMessage } from '@dimensiondev/holoflows-kit'
+import { Trans } from '@lingui/react/macro'
 
 const useStyles = makeStyles()((theme) => ({
     root: {
@@ -41,14 +41,12 @@ interface ConnectPersonaBoundaryProps {
     children: SupportChildren
     createConfirm?: boolean
     enableVerify?: boolean
-    personas: PersonaInformation[]
+    personas: readonly PersonaInformation[]
     beforeAction?: (status: PersonaConnectStatus) => Promise<void> | void
     afterAction?: (status: PersonaConnectStatus) => Promise<void> | void
-    currentPersonaIdentifier: string
-    openDashboard: (route?: DashboardRoutes, search?: string) => Promise<any>
+    currentPersonaIdentifier: PersonaIdentifier | undefined
+    openDashboard?: (route: DashboardRoutes, search?: string) => void
     identity?: IdentityResolved
-    ownPersonaChanged: UnboundedRegistry<void>
-    ownProofChanged: UnboundedRegistry<void>
 }
 
 export const ConnectPersonaBoundary = memo<ConnectPersonaBoundaryProps>(
@@ -63,12 +61,9 @@ export const ConnectPersonaBoundary = memo<ConnectPersonaBoundaryProps>(
         beforeAction,
         afterAction,
         currentPersonaIdentifier,
-        ownPersonaChanged,
         identity,
         openDashboard,
-        ownProofChanged,
     }) => {
-        const t = useSharedI18N()
         const { classes } = useStyles()
 
         const { value: status, loading: statusLoading } = useCurrentPersonaConnectStatus(
@@ -76,7 +71,6 @@ export const ConnectPersonaBoundary = memo<ConnectPersonaBoundaryProps>(
             currentPersonaIdentifier,
             openDashboard,
             identity,
-            { events: { ownPersonaChanged, ownProofChanged } } as WebExtensionMessage<MaskEvents>,
         )
         const isFnChildren = typeof children === 'function'
 
@@ -89,40 +83,53 @@ export const ConnectPersonaBoundary = memo<ConnectPersonaBoundaryProps>(
                 return (
                     <Button disabled={statusLoading} className={classes.button}>
                         <Icons.Identity size={18} sx={{ marginRight: '8px' }} />
-                        {t.persona_boundary_create_persona()}
+                        <Trans>Create Persona</Trans>
                     </Button>
                 )
 
             if (!status.connected)
                 return (
                     <Button disabled={statusLoading} className={classes.button}>
-                        <Icons.Connect size={18} sx={{ marginRight: '8px' }} />
-                        {t.persona_boundary_connect_persona()}
+                        <Icons.Connect size={18} sx={{ marginRight: '8px', color: '#fff' }} />
+                        <Trans>Connect Persona</Trans>
                     </Button>
                 )
             if (!status.verified)
                 return (
                     <Button disabled={statusLoading} className={classes.button}>
-                        <Icons.Connect size={18} sx={{ marginRight: '8px' }} />
-                        {t.persona_boundary_verify_persona()}
+                        <Icons.Connect size={18} sx={{ marginRight: '8px', color: '#fff' }} />
+                        <Trans>Verify your X ID</Trans>
                     </Button>
                 )
             return null
-        }, [t, status, statusLoading, customHint, isFnChildren, children])
+        }, [status, statusLoading, customHint, isFnChildren, children])
 
         const handleClick = useCallback(() => {
             beforeAction?.(status)
-            if (!status.verified || !status.hasPersona || !status.connected)
-                status.action?.(directTo, handlerPosition, enableVerify, !createConfirm)
-            afterAction?.(status)
-        }, [directTo, handlerPosition, JSON.stringify(status), createConfirm])
 
+            if (!status.hasPersona || !status.connected) {
+                status.action?.(
+                    directTo ?? DashboardRoutes.SignUpPersona,
+                    handlerPosition,
+                    enableVerify,
+                    !createConfirm,
+                )
+                return
+            }
+
+            if (!status.verified) status.action?.(directTo, handlerPosition, enableVerify, !createConfirm)
+            afterAction?.(status)
+        }, [directTo, handlerPosition, status, createConfirm])
+
+        if (statusLoading) return null
         return (
             <Stack className={classes.root} display="inline-flex" onClick={handleClick}>
                 <Stack style={{ pointerEvents: status.action ? 'none' : 'auto' }} display="inline-flex">
                     {actionComponent}
                 </Stack>
-                {status.action || statusLoading ? <Stack className={classes.mask} display="inline-flex" /> : null}
+                {status.action || statusLoading ?
+                    <Stack className={classes.mask} display="inline-flex" />
+                :   null}
             </Stack>
         )
     },

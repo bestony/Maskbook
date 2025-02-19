@@ -1,23 +1,30 @@
-import { readyPromise } from './bridge.js'
-import { persona } from './persona.js'
-import { SocialNetwork } from './socialNetwork.js'
+import type { Mask } from '../public-api/index.js'
+import { contentScript, readyPromise } from './bridge.js'
+import { ethereum } from './wallet.js'
 
+if (location.protocol.includes('-extension')) throw new TypeError('Mask SDK: this is not expected to run in extension.')
 document.currentScript?.remove()
+
+const MaskSDK: {
+    [key in keyof typeof Mask as undefined extends (typeof Mask)[key] ? never : key]: (typeof Mask)[key]
+} & { reload?(): Promise<void> } = {
+    sdkVersion: 0,
+    ethereum,
+}
+Object.assign(globalThis, { Mask: MaskSDK })
+
 readyPromise.then((init) => {
-    const MaskSDK: typeof Mask = {
-        sdkVersion: 0,
-        credentials: {} as any,
-        ethereum: {} as any,
-        socialNetwork: new SocialNetwork(init),
-        persona,
+    if (init.debuggerMode) {
+        if (location.href === 'https://metamask.github.io/test-dapp/' || location.href === 'http://localhost:9011/') {
+            Object.assign(window, { ethereum })
+            Object.assign(ethereum, { isMetaMask: true })
+        }
+        MaskSDK.reload = () => contentScript.reload()
     }
 
-    try {
-        if (process.env.NODE_ENV === 'development') {
-            // @ts-expect-error dev only
-            MaskSDK.reload = () => globalThis.dispatchEvent(new Event('mask-sdk-reload'))
-        }
-    } catch {}
-
-    Reflect.set(globalThis, 'Mask', MaskSDK)
+    ethereum.request({ method: 'eth_chainId', params: [] }).then((chainId) => {
+        ethereum.dispatchEvent(new CustomEvent('connect', { detail: { chainId } }))
+    })
 })
+
+undefined

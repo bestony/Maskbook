@@ -1,43 +1,53 @@
-import type { ReactNode } from 'react'
-import { type GeneratedIcon, Icons } from '@masknet/icons'
-import { EnhanceableSite, NextIDPlatform } from '@masknet/shared-base'
-
-export const SOCIAL_MEDIA_ICON_MAPPING: Record<EnhanceableSite | string, ReactNode> = {
-    [EnhanceableSite.Twitter]: <Icons.TwitterColored />,
-    [EnhanceableSite.Facebook]: <Icons.FacebookColored />,
-    [EnhanceableSite.Minds]: <Icons.Minds />,
-    [EnhanceableSite.Instagram]: <Icons.InstagramColored />,
-    [EnhanceableSite.OpenSea]: <Icons.OpenSeaColored />,
-    [EnhanceableSite.Mirror]: <Icons.Mirror />,
-    [EnhanceableSite.Localhost]: null,
-}
+import { Icons, type GeneratedIcon } from '@masknet/icons'
+import { EnhanceableSite, NetworkPluginID } from '@masknet/shared-base'
+import { ChainId } from '@masknet/web3-shared-evm'
+import { ChainId as SolanaChainId } from '@masknet/web3-shared-solana'
+import { ChainId as FlowChainId } from '@masknet/web3-shared-flow'
 
 export const SOCIAL_MEDIA_ROUND_ICON_MAPPING: Record<EnhanceableSite | string, GeneratedIcon | null> = {
-    [EnhanceableSite.Twitter]: Icons.TwitterRound,
+    [EnhanceableSite.Twitter]: Icons.TwitterXRound,
     [EnhanceableSite.Facebook]: Icons.FacebookRound,
     [EnhanceableSite.Minds]: Icons.MindsRound,
     [EnhanceableSite.Instagram]: Icons.InstagramRoundColored,
     [EnhanceableSite.OpenSea]: Icons.OpenSeaColored,
     [EnhanceableSite.Mirror]: Icons.Mirror,
-    [EnhanceableSite.Localhost]: null,
+    [EnhanceableSite.Localhost]: Icons.WebBlack,
 }
 
-export const SOCIAL_MEDIA_NAME: Record<EnhanceableSite | string, string> = {
-    [EnhanceableSite.Twitter]: 'Twitter',
-    [EnhanceableSite.Facebook]: 'Facebook',
-    [EnhanceableSite.Minds]: 'Minds',
-    [EnhanceableSite.Instagram]: 'Instagram',
-    [EnhanceableSite.OpenSea]: 'OpenSea',
-    [EnhanceableSite.Localhost]: 'Localhost',
-    [EnhanceableSite.Mirror]: 'Mirror',
+export enum RSS3_NFT_SITE_KEY {
+    TWITTER = '_nfts',
+    FACEBOOK = '_facebook_nfts',
+    INSTAGRAM = '_instagram_nfts',
 }
 
-export const NEXT_ID_PLATFORM_SOCIAL_MEDIA_MAP: Record<string, string> = {
-    [NextIDPlatform.Twitter]: EnhanceableSite.Twitter,
+export const EnhanceableSite_RSS3_NFT_SITE_KEY_map: Partial<Record<EnhanceableSite, RSS3_NFT_SITE_KEY>> = {
+    [EnhanceableSite.Facebook]: RSS3_NFT_SITE_KEY.FACEBOOK,
+    [EnhanceableSite.Twitter]: RSS3_NFT_SITE_KEY.TWITTER,
+    [EnhanceableSite.Instagram]: RSS3_NFT_SITE_KEY.INSTAGRAM,
 }
 
-export const SOCIAL_MEDIA_SUPPORTING_NEXT_DOT_ID = [EnhanceableSite.Twitter]
+export const PERSONA_AVATAR_DB_NAMESPACE = 'com.maskbook.persona.avatar.storage'
 
-export const MEDIA_VIEWER_URL = 'https://media-viewer.r2d2.to/index.html'
+export enum PopupHomeTabType {
+    SocialAccounts = 'Social Accounts',
+    ConnectedWallets = 'Connected Wallets',
+}
 
-export const MAX_WALLET_LIMIT = 100
+// https://docs.simplehash.com/reference/chains
+// sync `resolveChainId` and `ChainNameMap` in `web3-providers/src/SimpleHash/helpers.ts`
+export const SimpleHashSupportedChains: Record<NetworkPluginID, number[]> = {
+    [NetworkPluginID.PLUGIN_EVM]: [
+        ChainId.Mainnet,
+        ChainId.BSC,
+        ChainId.Base,
+        ChainId.Polygon,
+        ChainId.Arbitrum,
+        ChainId.Optimism,
+        ChainId.Avalanche,
+        ChainId.xDai,
+        ChainId.Scroll,
+        ChainId.Zora,
+    ],
+    [NetworkPluginID.PLUGIN_SOLANA]: [SolanaChainId.Mainnet],
+    [NetworkPluginID.PLUGIN_FLOW]: [FlowChainId.Mainnet],
+}

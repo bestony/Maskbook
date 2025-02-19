@@ -1,29 +1,34 @@
 // cSpell:disable
-import TypescriptParser from '@typescript-eslint/parser'
-
+// @ts-check
+import tseslint from 'typescript-eslint'
 import UnicornPlugin from 'eslint-plugin-unicorn'
 import UnusedImportsPlugin from 'eslint-plugin-unused-imports'
 import UnusedClassesPlugin from 'eslint-plugin-tss-unused-classes'
-import ReactPlugin from 'eslint-plugin-react'
 import ReactHooksPlugin from 'eslint-plugin-react-hooks'
-import ImportPlugin from 'eslint-plugin-import'
-import TypeScriptPlugin from '@typescript-eslint/eslint-plugin'
-import DimensionDevPlugin from '@dimensiondev/eslint-plugin'
+import ReactCompilerPlugin from 'eslint-plugin-react-compiler'
+// @ts-expect-error
+import ImportPlugin from 'eslint-plugin-i'
+import ReactPlugin from '@eslint-react/eslint-plugin'
+import MasknetPlugin from '@masknet/eslint-plugin'
+import ReactQueryPlugin from '@tanstack/eslint-plugin-query'
+import LinguiPlugin from 'eslint-plugin-lingui'
+import { fixupPluginRules } from '@eslint/compat'
 
-import { pathToFileURL } from 'url'
-
-// this is a patch to https://github.com/typescript-eslint/typescript-eslint/issues/3811
-if (pathToFileURL(process.argv[1]).toString().includes('eslint/bin/eslint.js')) {
-    // cspell: disable-next-line
-    process.env.TSESTREE_SINGLE_RUN = 'true'
-}
-
-// Note: update our plugin
-Object.keys(DimensionDevPlugin.rules)
-    .filter((x) => x.includes('/'))
-    .forEach((key) => {
-        DimensionDevPlugin.rules[key.replace('/', '-')] = DimensionDevPlugin.rules[key]
-    })
+const deferPackages = [
+    'wallet.ts',
+    'anchorme',
+    '@blocto/fcl',
+    '@metamask/eth-sig-util',
+    '@masknet/gun-utils',
+    'web3-eth',
+    'web3-eth-accounts',
+    'twitter-text',
+    'web3-utils',
+    'web3-eth-abi',
+    '@solana/web3.js',
+    '@project-serum/sol-wallet-adapter',
+    // add package names here.
+]
 
 // Prefer rules from @typescript-eslint > unicorn > other plugins
 // Level: if the rule is fixable and can be tolerate during dev, use 'warn' is better.
@@ -31,6 +36,19 @@ Object.keys(DimensionDevPlugin.rules)
 //        for RegEx rules, always uses 'error'.
 
 const avoidMistakeRules = {
+    // Libraries
+    '@tanstack/query/exhaustive-deps': 'error', // avoid unstable results from the hook being deps
+    '@tanstack/query/stable-query-client': 'error',
+    '@tanstack/query/infinite-query-property-order': 'warn', // help TypeScript to infer type correctly
+    '@tanstack/query/no-rest-destructuring': 'error',
+    '@tanstack/query/no-unstable-deps': 'error', // avoid unstable results from the hook being deps
+    '@lingui/no-single-tag-to-translate': 'error',
+    // '@lingui/no-single-variables-to-translate': 'error', // we're mixing two i18n frameworks, a lot of false positive reports
+    // https://github.com/lingui/eslint-plugin/issues/46
+    // '@lingui/no-unlocalized-strings': 'error',
+    '@lingui/no-trans-inside-trans': 'error',
+    '@lingui/t-call-in-function': 'error',
+
     // Code quality
     'no-invalid-regexp': 'error', // RegEx
     'unicorn/no-abusive-eslint-disable': 'error', // disable a rule requires a reason
@@ -45,29 +63,56 @@ const avoidMistakeRules = {
         },
     ], // disable a rule requires a reason
     /// React bad practice
-    'react/no-invalid-html-attribute': 'warn',
-    'react/void-dom-elements-no-children': 'error', // <img>children</img>
+    'react/no-children-count': 'error',
+    'react/no-children-for-each': 'error',
+    // 'react/no-children-map': 'error',
+    'react/no-children-only': 'error',
+    // 'react/no-children-prop': 'error',
+    'react/no-children-to-array': 'error',
+    // 'react/no-clone-element': 'error',
+    'react-compiler/react-compiler': 'error',
     /// TypeScript bad practice
-    '@typescript-eslint/ban-types': [
+    '@typescript-eslint/no-restricted-types': [
         'error',
         {
             types: {
-                // {} is widely used in React.PropsWithChildren<{}>. Unban this until we find better alternatives
-                '{}': false,
+                FC: {
+                    message:
+                        "To declare a component, you don't have to use FC to annotate it. To type something that accepts/is a React Component, use ComponentType<T>.",
+                    fixWith: 'ComponentType',
+                },
+                ReactElement: {
+                    message:
+                        'In most cases, you want ReactNode. Only ignore this rule when you want to use cloneElement.',
+                    fixWith: 'ReactNode',
+                },
+                'React.FC': {
+                    message:
+                        "To declare a component, you don't have to use React.FC to annotate it. To type something that accepts/is a React Component, use React.ComponentType<T>.",
+                    fixWith: 'React.ComponentType',
+                },
+                'React.ReactElement': {
+                    message:
+                        'In most cases, you want React.ReactNode. Only ignore this rule when you want to use cloneElement.',
+                    fixWith: 'React.ReactNode',
+                },
             },
-            extendDefaults: true,
         },
     ],
+    '@typescript-eslint/no-empty-object-type': ['error', { allowInterfaces: 'with-single-extends' }],
     // '@typescript-eslint/no-invalid-void-type': 'warn', // Disallow void type outside of generic or return types
     '@typescript-eslint/no-misused-new': 'error', // wrong 'new ()' or 'constructor()' signatures
+    '@typescript-eslint/no-unsafe-function-type': 'error',
+    // '@typescript-eslint/no-unsafe-type-assertion': 'error', // bans `expr as T`
+    '@typescript-eslint/no-wrapper-object-types': 'error',
     /// Unicode support
     'no-misleading-character-class': 'error', // RegEx
     // 'require-unicode-regexp': 'error', // RegEx modern RegEx with Unicode support
     // 'unicorn/prefer-code-point': 'error',
-    // '@dimensiondev/no-builtin-base64': 'warn', // Note: it fixes to Node's Buffer
+    // '@masknet/no-builtin-base64': 'warn', // Note: it fixes to Node's Buffer
     /// type safety
     // '@typescript-eslint/method-signature-style': 'warn', // method signature is bivariant
-    // '@typescript-eslint/no-non-null-asserted-optional-chain': 'error', // bans foo?.bar!
+    '@typescript-eslint/no-non-null-asserted-optional-chain': 'error', // bans foo?.bar!
     // '@typescript-eslint/no-unsafe-argument': 'error', // bans call(any)
     // '@typescript-eslint/no-unsafe-assignment': 'error', // bans a = any
     // '@typescript-eslint/no-unsafe-call': 'error', // bans any()
@@ -79,21 +124,23 @@ const avoidMistakeRules = {
     // '@typescript-eslint/strict-boolean-expressions': 'error', // stronger check for nullable string/number/boolean
     // '@typescript-eslint/switch-exhaustiveness-check': 'error', // switch should be exhaustive
     // '@typescript-eslint/unbound-method': 'error', // requires `this` to be set properly
-    // '@dimensiondev/type-no-force-cast-via-top-type': 'error', // expr as any as T
+    // '@masknet/type-no-force-cast-via-top-type': 'error', // expr as any as T
 
     // Security
     'no-script-url': 'error', // javascript:
     // 'unicorn/require-post-message-target-origin': 'warn', // postMessage(data, 'origin')
-    // 'react/iframe-missing-sandbox': 'warn', // <iframe sandbox="..." />
-    'react/jsx-no-script-url': 'error', // javascript:
-    'react/no-danger': 'error', // dangerouslySetInnerHTML
-    'react/no-danger-with-children': 'error', // dangerouslySetInnerHTML + children
+    'react/dom/no-dangerously-set-innerhtml': 'error', // dangerouslySetInnerHTML
+    'react/dom/no-dangerously-set-innerhtml-with-children': 'error', // dangerouslySetInnerHTML + children
+    'react/dom/no-missing-iframe-sandbox': 'error', // <iframe sandbox="..." />
+    'react/dom/no-script-url': 'error', // javascript:
+    'react/dom/no-unsafe-iframe-sandbox': 'error', // <iframe sandbox="..." />
+    'react/dom/no-unsafe-target-blank': 'error',
     '@typescript-eslint/no-implied-eval': 'error', // setTimeout('code')
-    '@dimensiondev/browser-no-set-html': 'error', // .innerHTML =
-    // '@dimensiondev/string-no-data-url': 'error', // data:...
-    '@dimensiondev/unicode-no-bidi': 'error',
-    '@dimensiondev/unicode-no-invisible': 'error',
-    '@dimensiondev/unicode-specific-set': 'warn',
+    '@masknet/browser-no-set-html': 'error', // .innerHTML =
+    // '@masknet/string-no-data-url': 'error', // data:...
+    '@masknet/unicode-no-bidi': 'error',
+    '@masknet/unicode-no-invisible': 'error',
+    '@masknet/unicode-specific-set': 'off',
 
     // Confusing code
     'no-bitwise': 'error', // need mark out
@@ -103,7 +150,6 @@ const avoidMistakeRules = {
     'no-label-var': 'warn', // name collision
     'no-plusplus': 'warn', // ++i? i++?
     'no-sequences': 'warn', // (a, b)
-    // 'react/no-unescaped-entities': 'warn', // <div> >1 </div>
     '@typescript-eslint/no-confusing-non-null-assertion': 'error', // a! == b
 
     // Problematic language features
@@ -112,19 +158,19 @@ const avoidMistakeRules = {
     'unicorn/require-array-join-separator': 'warn', // Array.join(_required_)
     // This rule breaks BigNumber class which has different .toFixed() default value.
     // 'unicorn/require-number-to-fixed-digits-argument': 'warn', // Number#toFixed(_required_)
-    'react/button-has-type': 'error', // default type is "submit" which refresh the page
+    'react/dom/no-missing-button-type': 'error', // default type is "submit" which refresh the page
     '@typescript-eslint/require-array-sort-compare': 'error', // Array#sort(_required_)
-    '@dimensiondev/type-no-instanceof-wrapper': 'warn', // bans `expr instanceof String` etc
+    '@masknet/type-no-instanceof-wrapper': 'warn', // bans `expr instanceof String` etc
     /// Footgun language features
     'no-compare-neg-zero': 'error', // x === -0 is wrong
     'no-new-wrappers': 'error', // wrapper objects are bad
     'no-unsafe-finally': 'error', // finally { return expr }
     'unicorn/no-thenable': 'error', // export function then()
-    '@typescript-eslint/no-loss-of-precision': 'error', // 5123000000000000000000000000001 is 5123000000000000000000000000000 actually
+    'no-loss-of-precision': 'error', // 5123000000000000000000000000001 is 5123000000000000000000000000000 actually
     '@typescript-eslint/prefer-enum-initializers': 'warn', // add a new item in the middle is an API breaking change.
     /// Little-known language features
     'no-constructor-return': 'error', // constructor() { return expr }
-    'react/no-namespace': 'error', // <svg:rect> react does not support
+    'react/dom/no-namespace': 'error', // <svg:rect> react does not support
     '@typescript-eslint/no-unsafe-declaration-merging': 'error',
     '@typescript-eslint/no-mixed-enums': 'error', // enum { a = 1, b = "b" }
     '@typescript-eslint/prefer-literal-enum-member': 'error', // enum { a = outsideVar }
@@ -142,27 +188,55 @@ const avoidMistakeRules = {
     'no-sparse-arrays': 'error', // [,, 1]
     'no-unmodified-loop-condition': 'error', // loop bug
     'no-unreachable-loop': 'error', // loop bug
-    'no-restricted-globals': ['error', 'event', 'name', 'length', 'closed'], // source of bug (those names are too common)
+    'no-restricted-globals': [
+        'error',
+        // source of bug (those names are too common)
+        'error',
+        'event',
+        'name',
+        'length',
+        'closed',
+        // no localStorage & sessionStorage in a web extension
+        {
+            name: 'localStorage',
+            message:
+                "If you're in the background script, localStorage is banned. It will cause Manifest V3 to crash. If you're in the chrome-extension:// pages, localStorage is discouraged. If you're in the content scripts, we can only use localStorage to read websites' data and MUST NOT store our own data.",
+        },
+        {
+            name: 'sessionStorage',
+            message:
+                "If you're in the background script, sessionStorage is banned. It will cause Manifest V3 to crash. If you're in the chrome-extension:// pages, sessionStorage is discouraged. If you're in the content scripts, we can only use sessionStorage to read websites' data and MUST NOT store our own data.",
+        },
+    ],
     'no-template-curly-in-string': 'error', // "${expr}" looks like a bug
     // 'require-atomic-updates': 'error', // await/yield race condition
     'valid-typeof': 'error', // typeof expr === undefined
     'unicorn/no-invalid-remove-event-listener': 'error', // removeEventListener('click', f.bind(...))
-    'react/jsx-no-comment-textnodes': 'warn', // <div>// comment</div> will render text!
-    'react/jsx-no-leaked-render': 'error', // <div>{0 && <Something />}</div> will render "0"!
-    'react/no-unstable-nested-components': 'error', // rerender bugs
+    'unicorn/no-negation-in-equality-check': 'error', // !foo === bar
+    'react/dom/no-children-in-void-dom-elements': 'warn', // <img>children</img>
+    'react/web-api/no-leaked-event-listener': 'warn', // addEventListener in hooks without removeEventListener
+    'react/web-api/no-leaked-interval': 'warn', // setInterval in hooks without clearInterval
+    'react/web-api/no-leaked-resize-observer': 'warn', // new ResizeObserver in hooks without disconnect
+    'react/web-api/no-leaked-timeout': 'warn', // setTimeout in hooks without clearTimeout
+    'react/no-comment-textnodes': 'warn', // <div>// comment</div> will render text!
+    // 'react/no-duplicate-key': 'warn', // <div key={1} /> <div key={1} /> this rule has bug?
+    'react/no-leaked-conditional-rendering': 'error', // <div>{0 && <Something />}</div> will render "0"!
+    'react/no-nested-components': 'error', // rerender bugs
     'react-hooks/rules-of-hooks': 'error', // react hooks
     '@typescript-eslint/no-base-to-string': 'error', // prevent buggy .toString() call
     '@typescript-eslint/no-loop-func': 'warn', // capture a loop variable might be a bug
     '@typescript-eslint/no-duplicate-enum-values': 'error', // enum { a = 1, b = 1 }
-    '@dimensiondev/string-no-locale-case': 'error', // in non-i18n cases use locale-aware string methods are wrong
+    '@masknet/string-no-locale-case': 'error', // in non-i18n cases use locale-aware string methods are wrong
 
     // Performance
-    'react/jsx-key': ['warn', { checkFragmentShorthand: true, checkKeyMustBeforeSpread: true, warnOnDuplicates: true }], // key={data.key}
-    'react/jsx-no-constructed-context-values': 'warn', // <Provider value={{}}> (should be cached!)
-    // 'react/no-array-index-key': 'warn', // no key={index}
-    // 'react/no-object-type-as-default-prop': 'warn', // function Component({ items = [] })
+    'react/no-missing-key': 'warn',
+    'react/no-unstable-context-value': 'warn',
+    'react/no-unstable-default-props': 'warn',
+    'react/hooks-extra/no-direct-set-state-in-use-effect': 'error',
+    // 'react/hooks-extra/no-unnecessary-use-callback': 'warn',
+    // 'react/hooks-extra/no-unnecessary-use-memo': 'warn',
+    'react/hooks-extra/prefer-use-state-lazy-initialization': 'warn',
     'unicorn/consistent-function-scoping': 'warn', // hoist unnecessary higher order functions
-    // 'unicorn/no-unsafe-regex': 'warn', // prevent RegExDoS
 }
 const codeStyleRules = {
     // Deprecated
@@ -171,8 +245,7 @@ const codeStyleRules = {
     'no-prototype-builtins': 'error', // bans `obj.hasOwnProperty()` etc
     'no-var': 'error', // var x
     'unicorn/no-new-buffer': 'error', // NodeJS
-    'react/no-deprecated': 'error',
-    'react/no-find-dom-node': 'error',
+    'react/no-class-component': 'error',
     // Let's wait for https://github.com/typescript-eslint/typescript-eslint/issues/6572
     // '@typescript-eslint/no-namespace': 'error', // namespace T {}
     '@typescript-eslint/prefer-namespace-keyword': 'error', // but if you really need to, don't use `module T {}`
@@ -191,7 +264,7 @@ const codeStyleRules = {
     'no-useless-concat': 'warn', // "a" + "b"
     'no-useless-escape': 'warn', // "hol\a"
     // 'no-lone-blocks': 'warn', // no block that not introducing a new scope
-    // 'react/jsx-no-useless-fragment': 'warn', // <><TheOnlyChild /></>
+    'react/no-useless-fragment': 'warn',
     'unicorn/no-console-spaces': 'warn', // console.log('id: ', id)
     'unicorn/no-empty-file': 'warn',
     'unicorn/no-useless-fallback-in-spread': 'warn', // {...(foo || {})}
@@ -217,9 +290,9 @@ const codeStyleRules = {
     // '@typescript-eslint/no-useless-constructor': 'warn', // empty constructor
     // '@typescript-eslint/no-useless-empty-export': 'warn', // export {}
     // '@typescript-eslint/no-redundant-type-constituents': 'warn', // type Q = any | T
-    // '@dimensiondev/array-no-unneeded-flat-map': 'warn', // bans Array#flatMap((x) => x)
-    '@dimensiondev/string-no-unneeded-to-string': 'warn', // useless .toString()
-    '@dimensiondev/string-no-simple-template-literal': 'warn', // prefer simple string
+    // '@masknet/array-no-unneeded-flat-map': 'warn', // bans Array#flatMap((x) => x)
+    '@masknet/string-no-unneeded-to-string': 'warn', // useless .toString()
+    '@masknet/string-no-simple-template-literal': 'warn', // prefer simple string
 
     // Prefer modern things
     'prefer-const': 'warn',
@@ -228,6 +301,7 @@ const codeStyleRules = {
     'prefer-object-has-own': 'warn',
     // 'prefer-object-spread': 'warn', // { ... } than Object.assign
     // 'prefer-rest-params': 'warn',
+
     'unicorn/no-document-cookie': 'error', // even if you have to do so, use CookieJar
     'unicorn/prefer-keyboard-event-key': 'warn',
     'unicorn/prefer-add-event-listener': 'warn',
@@ -236,13 +310,15 @@ const codeStyleRules = {
     // 'unicorn/prefer-array-flat-map': 'warn',
     'unicorn/prefer-array-index-of': 'warn',
     // 'unicorn/prefer-array-some': 'warn',
-    // 'unicorn/prefer-at': 'warn',
+    'unicorn/prefer-at': 'warn',
+    'unicorn/prefer-blob-reading-methods': 'warn',
     'unicorn/prefer-date-now': 'warn',
     // 'unicorn/prefer-dom-node-append': 'warn',
     'unicorn/prefer-dom-node-dataset': 'warn',
     // 'unicorn/prefer-dom-node-remove': 'warn',
     // 'unicorn/prefer-dom-node-text-content': 'warn',
     'unicorn/prefer-event-target': 'warn', // prevent use of Node's EventEmitter
+    'unicorn/prefer-math-min-max': 'warn', // Math.min/max than x < y ? x : y
     'unicorn/prefer-math-trunc': 'warn',
     'unicorn/prefer-modern-dom-apis': 'warn',
     'unicorn/prefer-modern-math-apis': 'warn',
@@ -253,36 +329,34 @@ const codeStyleRules = {
     // 'unicorn/prefer-set-has': 'warn',
     'unicorn/prefer-set-size': 'warn',
     // 'unicorn/prefer-spread': 'warn', // prefer [...] than Array.from
-    // 'unicorn/prefer-string-replace-all': 'warn', // str.replaceAll(...)
+    'unicorn/prefer-string-replace-all': 'warn', // str.replaceAll(...)
     'unicorn/prefer-string-slice': 'warn',
     'unicorn/prefer-string-trim-start-end': 'warn', // str.trimStart(...)
     '@typescript-eslint/no-this-alias': 'warn',
-    '@dimensiondev/jsx-no-class-component': 'error',
-    // '@dimensiondev/type-no-number-constructor': 'warn',
-    // '@dimensiondev/array-prefer-from': 'warn',
+    '@masknet/jsx-no-class-component': 'error',
+    // '@masknet/type-no-number-constructor': 'warn',
+    // '@masknet/array-prefer-from': 'warn',
     '@typescript-eslint/prefer-string-starts-ends-with': 'warn',
     '@typescript-eslint/prefer-for-of': 'warn',
     '@typescript-eslint/prefer-includes': 'warn',
     '@typescript-eslint/no-for-in-array': 'warn',
     // '@typescript-eslint/prefer-nullish-coalescing': 'warn',
     '@typescript-eslint/prefer-optional-chain': 'warn',
-    '@dimensiondev/browser-prefer-dataset': 'warn',
-    '@dimensiondev/browser-prefer-location-assign': 'warn',
-    // '@dimensiondev/no-unsafe-date': 'error', // use date-fns or Temporal instead
-    '@dimensiondev/prefer-fetch': 'error',
+    '@masknet/browser-prefer-location-assign': 'warn',
+    // '@masknet/no-unsafe-date': 'error', // use date-fns or Temporal instead
+    '@masknet/prefer-fetch': 'error',
 
     // Better debug
     // 'prefer-promise-reject-errors': 'warn', // Promise.reject(need_error)
     'symbol-description': 'warn', // Symbol(desc)
-    // 'react/display-name': ['warn', { checkContextObjects: true }], // .displayName = '...'
+    // 'react/no-missing-component-display-name': 'warn',
     'unicorn/catch-error-name': ['warn', { ignore: ['^err$'] }], // catch (err)
     // 'unicorn/custom-error-definition': 'warn', // correctly extends the native error
     // 'unicorn/error-message': 'warn', // error must have a message
     // 'unicorn/prefer-type-error': 'warn', // prefer TypeError
-    // '@typescript-eslint/no-throw-literal': 'warn', // no throw 'string'
+    // '@typescript-eslint/only-throw-error': 'warn', // no throw 'string'
 
     // API design
-    // 'react/prefer-read-only-props': 'error',
     // '@typescript-eslint/no-extraneous-class': 'error', // no class with only static members
     // '@typescript-eslint/prefer-readonly': 'error',
     // '@typescript-eslint/prefer-readonly-parameter-types': 'error',
@@ -308,25 +382,15 @@ const codeStyleRules = {
     'unicorn/throw-new-error': 'warn',
     // 'unicorn/prefer-logical-operator-over-ternary': 'warn', // prefer ?? and ||
     // 'unicorn/prefer-optional-catch-binding': 'warn', // prefer to omit catch binding
-    // 'react/function-component-definition': [
-    //     'warn',
-    //     {
-    //         namedComponents: 'function-declaration',
-    //         unnamedComponents: 'function-expression',
-    //     },
-    // ],
-    'react/jsx-boolean-value': ['error', 'never'],
-    // 'react/jsx-boolean-value': ['error', 'never', { always: ['value'] }],
-    // 'react/jsx-curly-brace-presence': ['warn', { props: 'never', children: 'never' }],
-    // 'react/jsx-fragments': ['warn', 'syntax'],
-    // 'react/no-children-prop': 'warn',
-    'react/self-closing-comp': 'warn',
+    'react/prefer-shorthand-boolean': 'warn',
+    'react/prefer-shorthand-fragment': 'warn',
     '@typescript-eslint/prefer-as-const': 'warn',
 
     // Consistency
     'no-irregular-whitespace': 'warn', // unusual but safe
     yoda: 'warn',
     'unicorn/better-regex': 'error', // RegEx
+    'unicorn/consistent-existence-index-check': 'warn', // index === -1
     'unicorn/escape-case': 'warn', // correct casing of escape '\xA9'
     'unicorn/no-hex-escape': 'warn', // correct casing of escape '\u001B'
     // 'unicorn/numeric-separators-style': 'warn', // correct using of 1_234_567
@@ -348,18 +412,16 @@ const codeStyleRules = {
     // '@typescript-eslint/sort-type-constituents': 'warn',
     // '@typescript-eslint/triple-slash-reference': ['error', { lib: 'never', path: 'never', types: 'always' }],
     // '@typescript-eslint/unified-signatures': 'warn', // prefer merging overload
-    '@dimensiondev/prefer-early-return': 'warn',
-    // '@dimensiondev/no-redundant-variable': 'warn',
-    // '@dimensiondev/no-single-return': 'warn',
-    // '@dimensiondev/jsx-no-template-literal': 'warn',
+    '@masknet/prefer-early-return': 'warn',
+    // '@masknet/no-redundant-variable': 'warn',
+    // '@masknet/no-single-return': 'warn',
+    // '@masknet/jsx-no-template-literal': 'warn',
 
     // Naming convension
     // 'func-name-matching': 'warn',
     // 'new-cap': 'warn',
-    // 'react/boolean-prop-naming': 'warn',
-    // 'react/hook-use-state': ['warn', { allowDestructuredState: true }],
-    // 'react/jsx-handler-names': 'warn',
-    // 'react/jsx-pascal-case': 'warn',
+    'react/naming-convention/component-name': ['warn', { rule: 'PascalCase' }],
+    // 'react/naming-convention/file-name': ['warn', { rule: 'PascalCase' }],
 
     // Bad practice
     'no-ex-assign': 'warn', // reassign err in catch
@@ -370,11 +432,11 @@ const codeStyleRules = {
     // '@typescript-eslint/default-param-last': 'warn', // (a, b = 1, c)
     // '@typescript-eslint/no-dynamic-delete': 'error', // this usually means you should use Map/Set
     /// Async functions / Promise bad practice
-    // 'no-async-promise-executor': 'error', // new Promise(async (resolve) => )
-    // 'no-promise-executor-return': 'error', // new Promise(() => result)
+    'no-async-promise-executor': 'error', // new Promise(async (resolve) => )
+    'no-promise-executor-return': 'error', // new Promise(() => result)
     // '@typescript-eslint/no-floating-promises': 'warn', // unhandled promises
     // '@typescript-eslint/promise-function-async': 'warn', // avoid Zalgo
-    // '@typescript-eslint/return-await': 'warn', // return await expr
+    '@typescript-eslint/return-await': 'warn', // return await expr
 
     // No unused
     'no-unused-labels': 'warn',
@@ -388,10 +450,9 @@ const moduleSystemRules = {
         'error',
         {
             paths: [
-                { name: 'lodash', message: 'Please use lodash-es instead.' },
-                { name: 'date-fns', message: 'Please use date-fns/{submodule} instead.' },
-                { name: 'date-fns/esm', message: 'Please use date-fns/{submodule} instead.' },
-                { name: 'idb/with-async-ittr-cjs', message: 'Please use idb/with-async-ittr instead.' },
+                { name: 'uuid', message: 'Use crypto.randomUUID() instead.' },
+                { name: '@sentry/browser', message: 'Use Sentry.* global object instead.', allowTypeImports: true },
+                { name: 'async-call-rpc', message: 'Please use async-call-rpc/full instead.', allowTypeImports: true },
                 { name: '@masknet/typed-message/base', message: 'Please use @masknet/typed-message instead.' },
                 {
                     name: '@dimensiondev/holoflows-kit/es',
@@ -401,6 +462,57 @@ const moduleSystemRules = {
                     name: 'lodash-es',
                     message: 'Avoid using type unsafe methods.',
                     importNames: ['get'],
+                },
+                {
+                    name: 'react-use',
+                    importNames: ['useLocalStorage'],
+                    message:
+                        "If you're in the chrome-extension:// pages, localStorage is discouraged. If you're in the content scripts, we can only use localStorage to read websites' data and MUST NOT store our own data.",
+                },
+                {
+                    name: '@masknet/kit',
+                    importNames: ['formatFileSize'],
+                    message: 'Please use formatFileSize in @masknet/shared instead.',
+                },
+            ],
+        },
+    ],
+    'import/no-restricted-paths': [
+        'error',
+        {
+            zones: [
+                {
+                    target: './packages/mask/background/**',
+                    from: './packages/mask/shared-ui/',
+                    message: 'Background cannot import Ui specific code.',
+                },
+                {
+                    target: './packages/mask/shared/**',
+                    from: './packages/mask/shared-ui/',
+                    message: 'packages/mask/shared cannot import services. Move it to packages/mask/shared-ui instead.',
+                },
+                {
+                    target: './packages/mask/!(background)/**',
+                    from: './packages/mask/background/',
+                    message: 'Use Services.* instead.',
+                },
+                {
+                    target: './packages/mask/',
+                    from: [
+                        './packages/plugin-infra/src/dom/context.ts',
+                        './packages/plugin-infra/src/site-adaptor/context.ts',
+                    ],
+                    message: 'Use Services.* instead.',
+                },
+                // ideally shared folder should also bans import plugin context
+                // but that requires a lot of context passing. we leave it as a legacy escape path.
+                {
+                    target: './packages/!(plugins|plugin-infra|shared)/**',
+                    from: [
+                        './packages/plugin-infra/src/dom/context.ts',
+                        './packages/plugin-infra/src/site-adaptor/context.ts',
+                    ],
+                    message: 'Only plugins can import plugin context.',
                 },
             ],
         },
@@ -427,7 +539,8 @@ const moduleSystemRules = {
     'no-useless-rename': 'error',
 
     // Avoid mistake
-    'import/first': 'warn', // ES import always runs first even if you inserted some statements inside.
+    // 'import/first': 'warn', // ES import always runs first even if you inserted some statements inside.
+    // TypeError: context.getDeclaredVariables is not a function
     'import/no-absolute-path': 'error',
     // 'import/no-cycle': 'warn',
     // 'import/no-extraneous-dependencies': 'error', // import from devDependencies might be a mistake
@@ -436,21 +549,42 @@ const moduleSystemRules = {
     'import/no-self-import': 'error',
     // 'import/no-unassigned-import': 'error', // bans `import 'x'`. side-effect only imports should be explicitly marked.
     // '@typescript-eslint/no-import-type-side-effects': 'warn',
-}
-// TODO: enable rule @typescript-eslint/explicit-module-boundary-types for "./packages/mask/background/services/*"
-// TODO: ban uses of localStorage or sessionStorage
 
+    // performance
+    '@masknet/prefer-defer-import': [
+        'warn',
+        {
+            deferPackages,
+        },
+    ],
+}
+
+/** @type {any} */
 const plugins = {
     'tss-unused-classes': UnusedClassesPlugin,
     react: ReactPlugin,
     import: ImportPlugin,
     unicorn: UnicornPlugin,
-    '@typescript-eslint': TypeScriptPlugin,
-    '@dimensiondev': DimensionDevPlugin,
+    '@typescript-eslint': tseslint.plugin,
+    '@masknet': MasknetPlugin,
     'unused-imports': UnusedImportsPlugin,
     'react-hooks': ReactHooksPlugin,
+    'react-compiler': ReactCompilerPlugin,
+    '@tanstack/query': ReactQueryPlugin,
+    '@lingui': fixupPluginRules(LinguiPlugin),
 }
-export default [
+export default tseslint.config(
+    {
+        settings: {
+            react: { version: '18.3' },
+            'import/parsers': {
+                '@typescript-eslint/parser': ['.ts', '.tsx'],
+            },
+            'import/resolver': {
+                typescript: {},
+            },
+        },
+    },
     {
         ignores: [
             '**/*.d.ts',
@@ -459,21 +593,20 @@ export default [
             '**/dist',
             '**/i18n_generated.ts',
             '**/languages.ts',
-            '**/.storybook',
             'packages/contracts',
-            'storybook-static',
             'packages/scripts',
-            'packages/netlify/sites',
             'packages/mask/.webpack',
         ],
     },
     {
         files: ['packages/**/*.ts', 'packages/**/*.tsx'],
         languageOptions: {
-            parser: TypescriptParser,
+            parser: tseslint.parser,
             parserOptions: {
                 ecmaVersion: 'latest',
-                project: './tsconfig.eslint.json',
+                projectService: true,
+                // @ts-expect-error
+                tsconfigRootDir: import.meta.dirname,
                 warnOnUnsupportedTypeScriptVersion: false,
                 allowAutomaticSingleRunInference: true,
             },
@@ -482,10 +615,17 @@ export default [
         linterOptions: {
             reportUnusedDisableDirectives: true,
         },
-        rules: {
+        rules: /** @type {any} */ ({
             ...avoidMistakeRules,
             ...codeStyleRules,
             ...moduleSystemRules,
+        }),
+    },
+    {
+        files: ['packages/mask/background/**/*.ts'],
+        plugins,
+        rules: {
+            'no-restricted-globals': ['error', 'setTimeout', 'setInterval'],
         },
     },
     {
@@ -494,4 +634,47 @@ export default [
             'unicorn/consistent-function-scoping': 'off',
         },
     },
-]
+    {
+        files: ['packages/mask/shared/**/*.ts', 'packages/mask/shared/**/*.tsx'],
+        rules: {
+            '@typescript-eslint/no-restricted-imports': [
+                'error',
+                {
+                    paths: [
+                        {
+                            name: '#services',
+                            message:
+                                'packages/mask/shared cannot import services. Move it to packages/mask/shared-ui instead.',
+                        },
+                    ],
+                },
+            ],
+        },
+    },
+    {
+        files: ['packages/**/*.ts', 'packages/**/*.tsx'],
+        ignores: [
+            'packages/shared/**/*',
+            'packages/shared-base-ui/**/*',
+            'packages/mask/content-script/**/*',
+            'packages/mask/dashboard/**/*',
+            'packages/mask/popups/**/*',
+            'packages/mask/shared/**/*',
+            'packages/mask/shared-ui/**/*',
+            'packages/mask/swap/**/*',
+            'packages/theme/**/*',
+            'packages/plugins/**/*',
+        ],
+        rules: {
+            '@typescript-eslint/no-restricted-imports': [
+                'error',
+                {
+                    paths: [
+                        { name: '@lingui/react', message: 'Non-UI packages must not reference @lingui/react.' },
+                        { name: '@lingui/marco', message: 'Non-UI packages must not reference @lingui/marco.' },
+                    ],
+                },
+            ],
+        },
+    },
+)

@@ -1,36 +1,45 @@
-import { useEffect } from 'react'
-import { useAsyncRetry } from 'react-use'
 import { noop } from 'lodash-es'
-import type { Web3Helper } from '@masknet/web3-helpers'
-import { isSameAddress } from '@masknet/web3-shared-base'
+import { useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import type { NetworkPluginID } from '@masknet/shared-base'
+import type { ConnectionOptions } from '@masknet/web3-providers/types'
+import { isSameAddress } from '@masknet/web3-shared-base'
 import { useChainContext } from './useContext.js'
-import { useWeb3State } from './useWeb3State.js'
 import { useWeb3Connection } from './useWeb3Connection.js'
+import { useWeb3State } from './useWeb3State.js'
 
-export function useFungibleTokenBalance<S extends 'all' | void = void, T extends NetworkPluginID = NetworkPluginID>(
+export function useFungibleTokenBalance<T extends NetworkPluginID = NetworkPluginID>(
     pluginID?: T,
     address?: string,
-    options?: Web3Helper.Web3ConnectionOptionsScope<S, T>,
+    options?: ConnectionOptions<T>,
+    /** Allow to control the request */
+    enabled = true,
 ) {
     const { account } = useChainContext({ account: options?.account })
-    const connection = useWeb3Connection(pluginID, options)
+    const Web3 = useWeb3Connection(pluginID, {
+        account,
+        ...options,
+    } as ConnectionOptions<T>)
     const { BalanceNotifier } = useWeb3State(pluginID)
 
-    const asyncRetry = useAsyncRetry(async () => {
-        if (!connection) return '0'
-        return connection.getFungibleTokenBalance(address ?? '', undefined, options)
-    }, [address, connection, JSON.stringify(options)])
+    const result = useQuery({
+        enabled,
+        queryKey: ['fungible-token', 'balance', pluginID, account, address, options],
+        queryFn: async () => {
+            if (!address) return '0'
+            return Web3.getFungibleTokenBalance(address, undefined, options)
+        },
+    })
 
     useEffect(() => {
         return (
             BalanceNotifier?.emitter.on('update', (ev) => {
                 if (isSameAddress(account, ev.account)) {
-                    asyncRetry.retry()
+                    result.refetch()
                 }
             }) ?? noop
         )
-    }, [account, asyncRetry.retry, BalanceNotifier])
+    }, [account, result.refetch, BalanceNotifier])
 
-    return asyncRetry
+    return result
 }

@@ -9,32 +9,30 @@ import {
     useNetworkDescriptor,
     useWallet,
     useReverseAddress,
-    useWeb3State,
+    useWeb3Utils,
     useChainContext,
     NetworkContextProvider,
-    ActualChainContextProvider,
+    RevokeChainContextProvider,
 } from '@masknet/web3-hooks-base'
 import type { Web3Helper } from '@masknet/web3-helpers'
-import { WalletMessages } from '@masknet/plugin-wallet'
-import { useRemoteControlledDialog } from '@masknet/shared-base-ui'
-import { isDashboardPage, type NetworkPluginID } from '@masknet/shared-base'
+import { type NetworkPluginID, Sniffings } from '@masknet/shared-base'
 import { TransactionStatusType } from '@masknet/web3-shared-base'
-import { useSharedI18N } from '../../../locales/index.js'
 import { ProviderType } from '@masknet/web3-shared-evm'
 import { WalletDescription } from './WalletDescription.js'
 import { Action } from './Action.js'
+import { SelectProviderModal, WalletStatusModal } from '../../../index.js'
+import { Trans } from '@lingui/react/macro'
 
-const isDashboard = isDashboardPage()
-
-export const useStyles = makeStyles()((theme) => ({
+const useStyles = makeStyles()((theme) => ({
     root: {
         boxSizing: 'content-box',
         display: 'flex',
-        backgroundColor: isDashboard ? MaskColorVar.mainBackground : alpha(theme.palette.maskColor.bottom, 0.8),
+        backgroundColor:
+            Sniffings.is_dashboard_page ? MaskColorVar.mainBackground : alpha(theme.palette.maskColor.bottom, 0.8),
         boxShadow:
-            theme.palette.mode === 'dark'
-                ? '0px 0px 20px rgba(255, 255, 255, 0.12)'
-                : '0px 0px 20px rgba(0, 0, 0, 0.05)',
+            theme.palette.mode === 'dark' ?
+                '0px 0px 20px rgba(255, 255, 255, 0.12)'
+            :   '0px 0px 20px rgba(0, 0, 0, 0.05)',
         backdropFilter: 'blur(16px)',
         padding: theme.spacing(2),
         borderRadius: '0 0 12px 12px',
@@ -50,56 +48,64 @@ export const useStyles = makeStyles()((theme) => ({
     },
 }))
 
-export interface WalletStatusBarProps<T extends NetworkPluginID> extends PropsWithChildren<{}> {
+export interface WalletStatusBarProps<T extends NetworkPluginID> extends PropsWithChildren {
     className?: string
     actualPluginID?: T
     expectedPluginID?: T
     expectedChainId?: Web3Helper.Definition[T]['ChainId']
     onClick?: (ev: React.MouseEvent<HTMLDivElement>) => void
+    requiredSupportChainIds?: Array<Web3Helper.Definition[T]['ChainId']>
+    requiredSupportPluginID?: NetworkPluginID
+    readonlyMode?: boolean
+    disableSwitchAccount?: boolean
+    /** Hide pending indicator, defaults to false */
+    disablePending?: boolean
 }
 
 const PluginWalletStatusBarWithoutContext = memo<WalletStatusBarProps<NetworkPluginID>>(
-    ({ className, onClick, expectedPluginID, expectedChainId, children }) => {
-        const t = useSharedI18N()
+    ({
+        className,
+        onClick,
+        expectedPluginID,
+        expectedChainId,
+        children,
+        requiredSupportChainIds,
+        requiredSupportPluginID,
+        readonlyMode,
+        disableSwitchAccount,
+        disablePending,
+    }) => {
         const { classes, cx } = useStyles()
 
         const { pluginID } = useNetworkContext()
         const { account, chainId, providerType } = useChainContext()
-        const wallet = useWallet(pluginID)
+        const wallet = useWallet()
         const providerDescriptor = useProviderDescriptor()
         const networkDescriptor = useNetworkDescriptor(pluginID, chainId)
         const expectedNetworkDescriptor = useNetworkDescriptor(expectedPluginID, expectedChainId)
-        const { value: domain } = useReverseAddress(pluginID, account)
-        const { Others } = useWeb3State()
-
-        const { setDialog: setSelectProviderDialog } = useRemoteControlledDialog(
-            WalletMessages.events.selectProviderDialogUpdated,
-        )
+        const { data: domain } = useReverseAddress(pluginID, account)
+        const Utils = useWeb3Utils()
 
         const openSelectProviderDialog = useCallback(() => {
-            setSelectProviderDialog({
-                open: true,
-                network: expectedNetworkDescriptor,
+            SelectProviderModal.open({
+                requiredSupportChainIds,
+                requiredSupportPluginID,
             })
-        }, [expectedNetworkDescriptor])
-
-        const { openDialog: openWalletStatusDialog } = useRemoteControlledDialog(
-            WalletMessages.events.walletStatusDialogUpdated,
-        )
+        }, [expectedNetworkDescriptor, requiredSupportChainIds, requiredSupportPluginID])
 
         const pendingTransactions = useRecentTransactions(pluginID, TransactionStatusType.NOT_DEPEND)
 
         const walletName = useMemo(() => {
             if (domain) return domain
-            if (providerType === ProviderType.MaskWallet && wallet?.name) return wallet?.name
-            return providerDescriptor?.name || Others?.formatAddress(account, 4)
-        }, [account, domain, providerType, wallet?.name, providerDescriptor?.name, Others?.formatAddress])
+            if (providerType === ProviderType.MaskWallet && wallet?.name) return wallet.name
+            return providerDescriptor?.name || Utils.formatAddress(account, 4)
+        }, [account, domain, providerType, wallet?.name, providerDescriptor?.name, Utils.formatAddress])
 
         if (!account) {
             return (
                 <Box className={cx(classes.root, className)}>
                     <Button fullWidth onClick={openSelectProviderDialog}>
-                        <Icons.ConnectWallet className={classes.connection} /> {t.plugin_wallet_connect_a_wallet()}
+                        <Icons.Wallet className={classes.connection} /> <Trans>Connect Wallet</Trans>
                     </Button>
                 </Box>
             )
@@ -108,17 +114,19 @@ const PluginWalletStatusBarWithoutContext = memo<WalletStatusBarProps<NetworkPlu
         return (
             <Box className={cx(classes.root, className)}>
                 <WalletDescription
-                    pending={!!pendingTransactions.length}
+                    pending={disablePending ? false : !!pendingTransactions.length}
                     providerIcon={providerDescriptor?.icon}
                     networkIcon={networkDescriptor?.icon}
                     iconFilterColor={providerDescriptor?.iconFilterColor}
                     name={walletName}
-                    formattedAddress={Others?.formatAddress(account, 4)}
-                    addressLink={Others?.explorerResolver.addressLink?.(chainId, account)}
-                    onClick={onClick ?? openSelectProviderDialog}
-                    onPendingClick={openWalletStatusDialog}
+                    formattedAddress={Utils.formatAddress(account, 4)}
+                    addressLink={Utils.explorerResolver.addressLink(chainId, account)}
+                    onClick={readonlyMode || disableSwitchAccount ? undefined : (onClick ?? openSelectProviderDialog)}
+                    onPendingClick={readonlyMode || disableSwitchAccount ? undefined : () => WalletStatusModal.open()}
                 />
-                <Action openSelectWalletDialog={openSelectProviderDialog}>{children}</Action>
+                {!readonlyMode ?
+                    <Action openSelectWalletDialog={openSelectProviderDialog}>{children}</Action>
+                :   null}
             </Box>
         )
     },
@@ -128,16 +136,14 @@ PluginWalletStatusBarWithoutContext.displayName = 'PluginWalletStatusBarWithoutC
 
 export const PluginWalletStatusBar = memo<WalletStatusBarProps<NetworkPluginID>>((props) => {
     const children = (
-        <ActualChainContextProvider>
+        <RevokeChainContextProvider>
             <PluginWalletStatusBarWithoutContext {...props} />
-        </ActualChainContextProvider>
+        </RevokeChainContextProvider>
     )
 
-    return props.actualPluginID ? (
-        <NetworkContextProvider value={props.actualPluginID}>{children}</NetworkContextProvider>
-    ) : (
-        children
-    )
+    return props.actualPluginID ?
+            <NetworkContextProvider initialNetwork={props.actualPluginID}>{children}</NetworkContextProvider>
+        :   children
 })
 
 PluginWalletStatusBar.displayName = 'PluginWalletStatusBar'

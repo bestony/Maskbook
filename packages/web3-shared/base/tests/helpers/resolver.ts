@@ -17,9 +17,9 @@ const IMAGE_DATA_PARTIAL = 'data:image/png;base64,iVB'
 
 describe('resolveCrossOriginURL', () => {
     test.each([
-        { give: '', expected: undefined },
-        { give: MASK_URL, expected: `https://cors.r2d2.to?${encodeURIComponent(MASK_URL)}` },
-        { give: MASK_URL, expected: `https://cors.r2d2.to?${encodeURIComponent(MASK_URL)}` },
+        { give: '', expected: '' },
+        { give: MASK_URL, expected: `https://cors-next.r2d2.to?${encodeURIComponent(MASK_URL)}` },
+        { give: MASK_URL, expected: `https://cors-next.r2d2.to?${encodeURIComponent(MASK_URL)}` },
         { give: CHROME_EXTENSION_URL, expected: CHROME_EXTENSION_URL },
         { give: MOZ_EXTENSION_URL, expected: MOZ_EXTENSION_URL },
         { give: IMAGE_DATA_PARTIAL, expected: IMAGE_DATA_PARTIAL },
@@ -78,29 +78,29 @@ describe('resolveIPFS_URL', () => {
     const cases = [CIDv0, CIDv1].flatMap((cid) => {
         return [
             { give: '', expected: '' },
-            { give: cid, expected: `https://gateway.ipfscdn.io/ipfs/${cid}` },
-            { give: `${cid}/image`, expected: `https://gateway.ipfscdn.io/ipfs/${cid}/image` },
-            { give: `ipfs://${cid}`, expected: `https://gateway.ipfscdn.io/ipfs/${cid}` },
-            { give: `ipfs://ipfs/${cid}`, expected: `https://gateway.ipfscdn.io/ipfs/${cid}` },
-            { give: `https://gateway.ipfscdn.io/ipfs/${IMAGE_DATA_PARTIAL}`, expected: IMAGE_DATA_PARTIAL },
-            { give: `https://gateway.ipfscdn.io/ipfs/${cid}`, expected: `https://gateway.ipfscdn.io/ipfs/${cid}` },
-            { give: `https://ipfs.altava.com/ipfs/${cid}`, expected: `https://gateway.ipfscdn.io/ipfs/${cid}` },
+            { give: cid, expected: `https://ipfs.io/ipfs/${cid}` },
+            { give: `${cid}/image`, expected: `https://ipfs.io/ipfs/${cid}/image` },
+            { give: `ipfs://${cid}`, expected: `https://ipfs.io/ipfs/${cid}` },
+            { give: `ipfs://ipfs/${cid}`, expected: `https://ipfs.io/ipfs/${cid}` },
+            { give: `https://ipfs.io/ipfs/${IMAGE_DATA_PARTIAL}`, expected: IMAGE_DATA_PARTIAL },
+            { give: `https://ipfs.io/ipfs/${cid}`, expected: `https://ipfs.io/ipfs/${cid}` },
+            { give: `https://ipfs.altava.com/ipfs/${cid}`, expected: `https://ipfs.io/ipfs/${cid}` },
             {
                 give: `https://ipfs.altava.com/ipfs/${cid}/image`,
-                expected: `https://gateway.ipfscdn.io/ipfs/${cid}/image`,
+                expected: `https://ipfs.io/ipfs/${cid}/image`,
             },
             {
                 give: `https://ipfs.io/ipfs/${cid}`,
-                expected: `https://gateway.ipfscdn.io/ipfs/${cid}`,
+                expected: `https://ipfs.io/ipfs/${cid}`,
             },
             {
                 give: `https://ipfs.io/ipfs/${cid}/image`,
-                expected: `https://gateway.ipfscdn.io/ipfs/${cid}/image`,
+                expected: `https://ipfs.io/ipfs/${cid}/image`,
             },
             { give: MASK_URL, expected: MASK_URL },
             {
-                give: `https://gateway.ipfscdn.io/ipfs/${cid}?id=67874`,
-                expected: `https://gateway.ipfscdn.io/ipfs/${cid}`,
+                give: `https://ipfs.io/ipfs/${cid}?id=67874`,
+                expected: `https://ipfs.io/ipfs/${cid}`,
             },
             // should not trim query from non-IPFS url
             {
@@ -108,11 +108,10 @@ describe('resolveIPFS_URL', () => {
                 expected: 'https://www.companioninabox.art/api/companion.png?id=726&iteration=0',
             },
             // the host part has a CID
-            { give: `https://${cid}.ipfs.dweb.link`, expected: `https://gateway.ipfscdn.io/ipfs/${cid}` },
-            // { give: `https://${cid}.ipfs.dweb.link/460.png?ext=png`, expected: `https://gateway.ipfscdn.io/ipfs/${cid}/460.png`},
+            { give: `https://${cid}.ipfs.dweb.link`, expected: `https://ipfs.io/ipfs/${cid}` },
         ].map(({ give, expected }) => [
             { give, expected },
-            { give: `https://cors.r2d2.to?${encodeURIComponent(give)}`, expected },
+            { give: `https://cors-next.r2d2.to?${encodeURIComponent(give)}`, expected },
         ])
     })
     test.each(cases)('.resolveIPFS_URL($give)', ({ give, expected }) => {

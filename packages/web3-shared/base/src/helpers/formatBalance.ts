@@ -1,12 +1,23 @@
 import { BigNumber } from 'bignumber.js'
-import { pow10 } from './number.js'
+import { addThousandSeparators, isLessThan, leftShift, pow10, scale10, trimZero } from './number.js'
 
-export function formatBalance(
-    rawValue: BigNumber.Value = '0',
-    decimals = 0,
-    significant = decimals,
-    isPrecise = false,
-) {
+export interface FormatBalanceOptions {
+    significant?: number
+    isPrecise?: boolean
+    isFixed?: boolean
+    fixedDecimals?: number
+    hasSeparators?: boolean
+}
+
+export function formatBalance(rawValue: BigNumber.Value = '0', decimals = 0, options?: FormatBalanceOptions) {
+    const {
+        significant = decimals,
+        isPrecise = false,
+        isFixed = false,
+        fixedDecimals = 4,
+        hasSeparators = true,
+    } = options ?? {}
+
     let balance = new BigNumber(rawValue)
     if (!balance.isInteger()) {
         const message = `Expected an integer but got ${balance.toFixed()}`
@@ -17,7 +28,15 @@ export function formatBalance(
         }
     }
     balance = balance.integerValue()
-    if (balance.isNaN()) return '0'
+
+    if (isFixed) {
+        const value = leftShift(balance, decimals)
+        const minimum = scale10(1, -fixedDecimals)
+        if (value.eq(0)) return '0'
+        if (isLessThan(value, minimum)) return '<' + minimum.toFixed()
+        const result = trimZero(value.toFixed(fixedDecimals))
+        return hasSeparators ? addThousandSeparators(result) : result
+    }
 
     const base = pow10(decimals) // 10n ** decimals
     if (balance.div(base).lt(pow10(-8)) && balance.isGreaterThan(0) && !isPrecise) return '<0.000001'
@@ -28,7 +47,7 @@ export function formatBalance(
     let fraction = balance.modulo(base).toString(10) // (balance % base).toString(10)
 
     // add leading zeros
-    while (fraction.length < decimals) fraction = `0${fraction}`
+    fraction = fraction.padStart(decimals, '0')
     // keep up to 6 decimal places
     fraction = fraction.slice(0, balance.div(base).gt(pow10(-6)) ? 6 : 8)
 
@@ -37,10 +56,11 @@ export function formatBalance(
     fraction = fraction.match(matchSignificantDigits)?.[0] ?? ''
 
     // trim tailing zeros
-    fraction = fraction.replace(/0+$/g, '')
+    fraction = fraction.replaceAll(/0+$/g, '')
     const whole = balance.dividedToIntegerBy(base).toString(10) // (balance / base).toString(10)
     const value = `${whole}${fraction === '' ? '' : `.${fraction}`}`
 
     const raw = negative ? `-${value}` : value
-    return raw.includes('.') ? raw.replace(/0+$/, '').replace(/\.$/, '') : raw
+    const result = raw.includes('.') ? raw.replace(/0+$/, '').replace(/\.$/, '') : raw
+    return hasSeparators ? addThousandSeparators(result) : result
 }

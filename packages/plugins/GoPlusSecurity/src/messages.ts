@@ -1,4 +1,4 @@
-import { createPluginMessage, type PluginMessageEmitter } from '@masknet/plugin-infra'
+import { getPluginMessage, type PluginMessageEmitter } from '@masknet/plugin-infra'
 import type { ChainId } from '@masknet/web3-shared-evm'
 import { PLUGIN_ID } from './constants.js'
 
@@ -12,7 +12,7 @@ type CheckSecurityDialogEvent = {
     open: boolean
 }
 
-type tokenRiskWarningDialogEvent =
+export type TokenRiskWarningDialogEvent =
     | {
           open: true
           token?: Token
@@ -22,12 +22,13 @@ type tokenRiskWarningDialogEvent =
           open: false
           swap: boolean
       }
+
 export interface PluginGoPlusSecurityMessage {
     checkSecurityDialogEvent: CheckSecurityDialogEvent
-    tokenRiskWarningDialogEvent: tokenRiskWarningDialogEvent
+    tokenRiskWarningDialogEvent: TokenRiskWarningDialogEvent
     rpc: unknown
 }
 
-if (import.meta.webpackHot) import.meta.webpackHot.accept()
+import.meta.webpackHot?.accept()
 export const PluginGoPlusSecurityMessages: PluginMessageEmitter<PluginGoPlusSecurityMessage> =
-    createPluginMessage(PLUGIN_ID)
+    getPluginMessage(PLUGIN_ID)

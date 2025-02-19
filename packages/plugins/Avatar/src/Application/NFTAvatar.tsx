@@ -1,13 +1,7 @@
 import { Icons } from '@masknet/icons'
-import { EnhanceableSite } from '@masknet/shared-base'
 import { makeStyles } from '@masknet/theme'
 import { Avatar, Box, Stack } from '@mui/material'
-import { RainbowBox } from '../SNSAdaptor/RainbowBox.js'
-
-export const SOCIAL_MEDIA_ICON_MAPPING: Record<string, React.ReactNode> = {
-    [EnhanceableSite.Twitter]: <Icons.TwitterRound size={15} />,
-    [EnhanceableSite.Localhost]: null,
-}
+import { RainbowBox } from '../SiteAdaptor/RainbowBox.js'
 
 const useStyles = makeStyles()({
     indicator: {
@@ -24,28 +18,26 @@ const useStyles = makeStyles()({
 })
 
 interface NFTAvatarProps {
+    isOwner?: boolean
     hasBorder: boolean
     platform?: string
     avatar?: string
-    owner?: boolean
 }
 
 export function NFTAvatar(props: NFTAvatarProps) {
-    const { avatar, hasBorder, owner = false } = props
+    const { avatar, hasBorder, isOwner = false } = props
     const { classes } = useStyles()
 
     return (
         <Stack position="relative">
-            {hasBorder ? (
+            {hasBorder ?
                 <RainbowBox>
                     <Avatar src={avatar} />
                 </RainbowBox>
-            ) : (
-                <Box style={{ border: '2px solid transparent' }}>
+            :   <Box style={{ border: '2px solid transparent' }}>
                     <Avatar src={avatar} />
                 </Box>
-            )}
-
+            }
             <Stack
                 sx={{
                     position: 'absolute',
@@ -54,10 +46,13 @@ export function NFTAvatar(props: NFTAvatarProps) {
                     overflow: 'hidden',
                     borderRadius: '100%',
                     backgroundColor: 'white',
+                    padding: '1px',
                 }}>
-                {SOCIAL_MEDIA_ICON_MAPPING[EnhanceableSite.Twitter]}
+                <Icons.TwitterXRound size={14} />
             </Stack>
-            {owner ? <div className={classes.indicator} /> : null}
+            {isOwner ?
+                <div className={classes.indicator} />
+            :   null}
         </Stack>
     )
 }

@@ -1,6 +1,6 @@
 import type { Plugin } from '@masknet/plugin-infra'
-import { makeStyles, ShadowRootTooltip } from '@masknet/theme'
-import { Typography } from '@mui/material'
+import { makeStyles, ShadowRootTooltip, TextOverflowTooltip, useBoundedPopperProps } from '@masknet/theme'
+import { Button, Typography } from '@mui/material'
 
 const useStyles = makeStyles<{ disabled: boolean; iconFilterColor?: string }>()(
     (theme, { disabled, iconFilterColor }) => ({
@@ -11,7 +11,10 @@ const useStyles = makeStyles<{ disabled: boolean; iconFilterColor?: string }>()(
             alignItems: 'center',
             backgroundColor: theme.palette.maskColor.bg,
             borderRadius: '8px',
-            height: 100,
+            height: 104,
+            gap: theme.spacing(1),
+            padding: 4,
+            boxSizing: 'border-box',
         },
         applicationBoxHover: {
             cursor: 'pointer',
@@ -19,13 +22,20 @@ const useStyles = makeStyles<{ disabled: boolean; iconFilterColor?: string }>()(
                 transform: 'scale(1.02) translateY(-2px)',
                 background: theme.palette.maskColor.bottom,
                 boxShadow:
-                    theme.palette.mode === 'light'
-                        ? '0px 5px 8px rgba(0, 0, 0, 0.05)'
-                        : '0px 0px 20px rgba(255, 255, 255, 0.12)',
+                    theme.palette.mode === 'light' ?
+                        '0px 5px 8px rgba(0, 0, 0, 0.05)'
+                    :   '0px 0px 20px rgba(255, 255, 255, 0.12)',
             },
         },
         title: {
             fontSize: 14,
+            height: 36,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            textAlign: 'center',
+            lineHeight: '18px',
         },
         disabled: {
             opacity: 0.4,
@@ -40,15 +50,11 @@ const useStyles = makeStyles<{ disabled: boolean; iconFilterColor?: string }>()(
             ...(iconFilterColor ? { filter: `drop-shadow(0px 6px 12px ${iconFilterColor})` } : {}),
         },
         arrow: {
-            marginLeft: '-12px',
             color: theme.palette.mode === 'light' ? theme.palette.common.black : theme.palette.common.white,
         },
-        firstAreaArrow: {
-            marginLeft: '12px !important',
-        },
         recommendFeatureApplicationBox: {
-            width: 221,
-            minWidth: 221,
+            width: 257,
+            minWidth: 257,
             height: 97,
             marginRight: 9.5,
             cursor: 'pointer',
@@ -58,6 +64,7 @@ const useStyles = makeStyles<{ disabled: boolean; iconFilterColor?: string }>()(
             justifyContent: 'space-between',
             padding: 10,
             borderRadius: 8,
+            boxSizing: 'content-box',
         },
         recommendFeatureAppIconWrapper: {
             marginRight: 12,
@@ -67,12 +74,14 @@ const useStyles = makeStyles<{ disabled: boolean; iconFilterColor?: string }>()(
             },
         },
         recommendFeatureAppListItemName: {
-            fontSize: 14,
-            fontWeight: 500,
+            textAlign: 'left',
+            fontSize: 18,
+            fontWeight: 700,
             cursor: disabled ? 'default' : 'pointer',
             color: theme.palette.common.white,
         },
         recommendFeatureAppListItemDescription: {
+            textAlign: 'left',
             fontSize: 12,
             fontWeight: 500,
             cursor: disabled ? 'default' : 'pointer',
@@ -86,10 +95,9 @@ interface ApplicationEntryProps {
     title: React.ReactNode
     secondTitle?: React.ReactNode
     disabled?: boolean
-    recommendFeature?: Plugin.SNSAdaptor.ApplicationEntry['recommendFeature']
-    popperBoundary?: HTMLElement | null
+    recommendFeature?: Plugin.SiteAdaptor.ApplicationEntry['recommendFeature']
     iconFilterColor?: string
-    tooltipHint?: string | React.ReactElement
+    tooltipHint?: React.ReactNode
     onClick: () => void
 }
 
@@ -103,70 +111,78 @@ export function ApplicationEntry(props: ApplicationEntryProps) {
         tooltipHint,
         recommendFeature,
         iconFilterColor,
-        popperBoundary,
     } = props
     const { classes, cx } = useStyles({ disabled, iconFilterColor })
-    const jsx = recommendFeature ? (
-        <div
-            style={{
-                background: recommendFeature.backgroundGradient,
-            }}
-            className={cx(
-                classes.recommendFeatureApplicationBox,
-                disabled ? classes.disabled : classes.applicationBoxHover,
-            )}
-            onClick={disabled ? () => {} : onClick}>
-            <div className={classes.recommendFeatureAppIconWrapper}>{icon}</div>
-            <div>
-                <Typography className={classes.recommendFeatureAppListItemName}>{title}</Typography>
-                {secondTitle ? (
-                    <Typography className={classes.recommendFeatureAppListItemDescription}>{secondTitle}</Typography>
-                ) : null}
-                <Typography className={classes.recommendFeatureAppListItemDescription}>
-                    {recommendFeature.description}
-                </Typography>
-            </div>
-        </div>
-    ) : (
-        <div
-            className={cx(classes.applicationBox, disabled ? classes.disabled : classes.applicationBoxHover)}
-            onClick={disabled ? () => {} : onClick}>
-            <div className={classes.iconWrapper}>{icon}</div>
-            <Typography className={classes.title} color="textPrimary">
-                {title}
-            </Typography>
-            {secondTitle ? (
-                <Typography variant="body2" color="textSecondary">
-                    {secondTitle}
-                </Typography>
-            ) : null}
-        </div>
-    )
-    return tooltipHint ? (
-        <ShadowRootTooltip
-            PopperProps={{
-                disablePortal: true,
-                placement: recommendFeature ? 'bottom' : 'top',
-                modifiers: [
-                    {
-                        name: 'flip',
-                        options: {
-                            boundary: popperBoundary,
-                            flipVariations: false,
+    const popperProps = useBoundedPopperProps()
+    const jsx =
+        recommendFeature ?
+            <Button
+                variant="text"
+                // do not change to sx. the hover image will be changed in applicationBoxHover
+                style={{ background: recommendFeature.backgroundGradient }}
+                disabled={disabled}
+                className={cx(
+                    classes.recommendFeatureApplicationBox,
+                    disabled ? classes.disabled : classes.applicationBoxHover,
+                )}
+                onClick={disabled ? undefined : onClick}>
+                <div className={classes.recommendFeatureAppIconWrapper}>{icon}</div>
+                <div>
+                    <Typography className={classes.recommendFeatureAppListItemName}>{title}</Typography>
+                    {secondTitle ?
+                        <Typography className={classes.recommendFeatureAppListItemDescription}>
+                            {secondTitle}
+                        </Typography>
+                    :   null}
+                    <Typography className={classes.recommendFeatureAppListItemDescription}>
+                        {recommendFeature.description}
+                    </Typography>
+                </div>
+            </Button>
+        :   <Button
+                className={cx(classes.applicationBox, disabled ? classes.disabled : classes.applicationBoxHover)}
+                onClick={disabled ? undefined : onClick}
+                variant="text"
+                disabled={disabled}>
+                <div className={classes.iconWrapper}>{icon}</div>
+                <TextOverflowTooltip
+                    title={title}
+                    as={ShadowRootTooltip}
+                    arrow={false}
+                    disableInteractive
+                    componentsProps={{
+                        tooltip: {
+                            style: {
+                                padding: 6,
+                                fontSize: 10,
+                            },
                         },
-                    },
-                ],
-            }}
-            classes={{
-                arrow: cx(classes.arrow, recommendFeature?.isFirst ? classes.firstAreaArrow : ''),
-            }}
-            placement={recommendFeature ? 'bottom' : 'top'}
-            arrow
-            disableHoverListener={!tooltipHint}
-            title={disabled ? null : <Typography>{tooltipHint}</Typography>}>
-            {jsx}
-        </ShadowRootTooltip>
-    ) : (
-        jsx
-    )
+                    }}>
+                    <Typography className={classes.title} color="textPrimary">
+                        {title}
+                    </Typography>
+                </TextOverflowTooltip>
+                {secondTitle ?
+                    <Typography variant="body2" color="textSecondary">
+                        {secondTitle}
+                    </Typography>
+                :   null}
+            </Button>
+    return tooltipHint && !disabled ?
+            <ShadowRootTooltip
+                PopperProps={{
+                    ...popperProps,
+                    disablePortal: true,
+                    placement: recommendFeature ? 'bottom' : 'top',
+                }}
+                classes={{
+                    arrow: classes.arrow,
+                }}
+                placement={recommendFeature ? 'bottom' : 'top'}
+                arrow
+                disableInteractive
+                title={<Typography>{tooltipHint}</Typography>}>
+                {jsx}
+            </ShadowRootTooltip>
+        :   jsx
 }

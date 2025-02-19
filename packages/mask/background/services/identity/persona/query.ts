@@ -1,6 +1,6 @@
 import { first, omit, orderBy } from 'lodash-es'
 import {
-    ECKeyIdentifierFromJsonWebKey,
+    ECKeyIdentifier,
     type EC_Public_JsonWebKey,
     fromBase64URL,
     isEC_Private_JsonWebKey,
@@ -21,7 +21,7 @@ import {
 import { toPersonaInformation } from '../../__utils__/convert.js'
 import * as bip39 from 'bip39'
 import { recover_ECDH_256k1_KeyPair_ByMnemonicWord } from './utils.js'
-import { bufferToHex, privateToPublic, publicToAddress } from 'ethereumjs-util'
+import { bytesToHex, privateToPublic, publicToAddress } from '@ethereumjs/util'
 import { decode } from '@msgpack/msgpack'
 import { decodeArrayBuffer } from '@masknet/kit'
 
@@ -71,8 +71,8 @@ export async function queryPersonaEOAByMnemonic(mnemonicWord: string, password: 
 
     if (!privateKey.d) return
     return {
-        address: bufferToHex(publicToAddress(privateToPublic(Buffer.from(fromBase64URL(privateKey.d))))),
-        identifier: await ECKeyIdentifierFromJsonWebKey(publicKey),
+        address: bytesToHex(publicToAddress(privateToPublic(fromBase64URL(privateKey.d)))),
+        identifier: (await ECKeyIdentifier.fromJsonWebKey(publicKey)).unwrap(),
         publicKey,
     }
 }
@@ -83,8 +83,8 @@ export async function queryPersonaEOAByPrivateKey(privateKeyString: string) {
     if (!isEC_Private_JsonWebKey(privateKey) || !privateKey.d) throw new TypeError('Invalid private key')
     const publicKey = omit(privateKey, 'd') as EC_Public_JsonWebKey
     return {
-        address: bufferToHex(publicToAddress(privateToPublic(Buffer.from(fromBase64URL(privateKey.d))))),
-        identifier: await ECKeyIdentifierFromJsonWebKey(publicKey),
+        address: bytesToHex(publicToAddress(privateToPublic(fromBase64URL(privateKey.d)))),
+        identifier: (await ECKeyIdentifier.fromJsonWebKey(publicKey)).unwrap(),
         publicKey,
     }
 }
@@ -99,8 +99,12 @@ export async function querySocialIdentity(
     identity: IdentityResolved | undefined,
 ): Promise<SocialIdentity | undefined> {
     if (!identity?.identifier) return
-    const bindings = await queryPersonasFromNextID(platform, identity)
     const persona = await queryPersonaByProfile(identity.identifier)
+    if (!persona) return identity
+
+    const bindings = await queryPersonasFromNextID(platform, identity)
+    if (!bindings) return identity
+
     const personaBindings =
         bindings?.filter((x) => x.persona === persona?.identifier.publicKeyAsHex.toLowerCase()) ?? []
     return {

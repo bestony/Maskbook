@@ -1,8 +1,9 @@
-import { type ChangeEvent, memo, useCallback, useMemo } from 'react'
-import { useWeb3State } from '@masknet/web3-hooks-base'
-import { formatBalance } from '@masknet/web3-shared-base'
-import { FungibleTokenInputUI, type FungibleTokenInputUIProps } from './UI.js'
 import { BigNumber } from 'bignumber.js'
+import { type ChangeEvent, memo, useCallback, useMemo } from 'react'
+import { useWeb3Utils } from '@masknet/web3-hooks-base'
+import { NUMERIC_INPUT_REGEXP_PATTERN } from '@masknet/shared-base'
+import { formatBalance, isZero, leftShift } from '@masknet/web3-shared-base'
+import { FungibleTokenInputUI, type FungibleTokenInputUIProps } from './UI.js'
 
 const MIN_AMOUNT_LENGTH = 1
 const MAX_AMOUNT_LENGTH = 79
@@ -36,9 +37,9 @@ export const FungibleTokenInput = memo<FungibleTokenInputProps>(
         maxAmountShares = 1,
         className,
     }) => {
-        const { Others } = useWeb3State()
+        const Utils = useWeb3Utils()
 
-        const isNative = isAvailableBalance ?? Others?.isNativeTokenAddress(token?.address)
+        const isNative = isAvailableBalance ?? Utils.isNativeTokenAddress(token?.address)
 
         // #region update amount by self
         const { RE_MATCH_WHOLE_AMOUNT, RE_MATCH_FRACTION_AMOUNT } = useMemo(
@@ -50,9 +51,9 @@ export const FungibleTokenInput = memo<FungibleTokenInputProps>(
         )
         const onChange = useCallback(
             (ev: ChangeEvent<HTMLInputElement>) => {
-                const amount_ = ev.currentTarget.value.replace(/,/g, '.')
-                if (RE_MATCH_FRACTION_AMOUNT.test(amount_)) onAmountChange(`0${amount_}`)
-                else if (amount_ === '' || RE_MATCH_WHOLE_AMOUNT.test(amount_)) onAmountChange(amount_)
+                const raw = ev.currentTarget.value.replaceAll(',', '.')
+                if (RE_MATCH_FRACTION_AMOUNT.test(raw)) onAmountChange(`0${raw}`)
+                else if (raw === '' || RE_MATCH_WHOLE_AMOUNT.test(raw)) onAmountChange(raw)
             },
             [onAmountChange, RE_MATCH_WHOLE_AMOUNT, RE_MATCH_FRACTION_AMOUNT],
         )
@@ -75,7 +76,7 @@ export const FungibleTokenInput = memo<FungibleTokenInputProps>(
                     min: 0,
                     minLength: MIN_AMOUNT_LENGTH,
                     maxLength: MAX_AMOUNT_LENGTH,
-                    pattern: '^[0-9]*[.,]?[0-9]*$',
+                    pattern: NUMERIC_INPUT_REGEXP_PATTERN,
                     spellCheck: false,
                 }}
                 placeholder={placeholder}
@@ -85,7 +86,17 @@ export const FungibleTokenInput = memo<FungibleTokenInputProps>(
                 onMaxClick={() => {
                     if (!token) return
                     const amount = new BigNumber(maxAmount ?? balance).dividedBy(maxAmountShares).decimalPlaces(0, 1)
-                    onAmountChange(formatBalance(amount, token.decimals, token.decimals, true) ?? '0')
+                    const formattedBalance = formatBalance(amount, token.decimals, {
+                        significant: token.decimals,
+                        isPrecise: true,
+                        hasSeparators: false,
+                    })
+
+                    onAmountChange(
+                        (isZero(formattedBalance) ?
+                            new BigNumber(leftShift(amount, token.decimals).toPrecision(2)).toFormat()
+                        :   formattedBalance) ?? '0',
+                    )
                 }}
                 balance={balance}
                 required
@@ -98,3 +109,4 @@ export const FungibleTokenInput = memo<FungibleTokenInputProps>(
         )
     },
 )
+FungibleTokenInput.displayName = 'FungibleTokenInput'

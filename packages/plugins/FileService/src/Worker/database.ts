@@ -1,5 +1,5 @@
 import type { Plugin } from '@masknet/plugin-infra'
-import compareDesc from 'date-fns/compareDesc'
+import { compareDesc } from 'date-fns'
 import { migrateFileInfoV1 } from '../helpers.js'
 import type { FileInfo, FileInfoV1 } from '../types.js'
 
@@ -34,16 +34,6 @@ export async function getAllFiles() {
         files.push(value)
     }
     return files.sort((a, b) => compareDesc(new Date(a.createdAt), new Date(b.createdAt)))
-}
-
-export async function getRecentFiles() {
-    const files = await getAllFiles()
-    return files.slice(0, 4)
-}
-
-export async function getFileInfo(checksum: string) {
-    await migrationV1()
-    return Database.get('file', checksum)
 }
 
 export async function setFileInfo(info: FileInfo) {

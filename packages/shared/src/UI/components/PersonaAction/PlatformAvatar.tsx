@@ -1,6 +1,7 @@
 import { makeStyles } from '@masknet/theme'
 import { Icons } from '@masknet/icons'
 import { PersonaImageIcon } from './PersonaImageIcon.js'
+import { memo } from 'react'
 
 interface StyleProps {
     size: number
@@ -31,27 +32,27 @@ interface PlatformAvatarProps extends withClasses<'networkIcon' | 'providerIcon'
     size?: number
     badgeSize?: number
     inverse?: boolean
-    networkIcon?: URL | string
-    providerIcon?: URL | string
+    networkIcon?: string
+    providerIcon?: string
     isBorderColorNotDefault?: boolean
 }
 
-export const PlatformAvatar = (props: PlatformAvatarProps) => {
+export const PlatformAvatar = memo(function PlatformAvatar(props: PlatformAvatarProps) {
     const { size = 24, badgeSize = 14, inverse = false, networkIcon, providerIcon } = props
     const { classes, cx } = useStyles(
         {
-            size: badgeSize > size ? badgeSize : size,
+            size: Math.max(badgeSize, size),
             isBorderColorNotDefault: props.isBorderColorNotDefault,
         },
         { props },
     )
 
     // #region icon names
-    const names = inverse
-        ? [cx(classes.badgeIcon, classes.providerIcon), cx(classes.mainIcon, classes.networkIcon)]
-        : [cx(classes.mainIcon, classes.networkIcon), cx(classes.badgeIcon, classes.providerIcon)]
+    const names =
+        inverse ?
+            [cx(classes.badgeIcon, classes.providerIcon), cx(classes.mainIcon, classes.networkIcon)]
+        :   [cx(classes.mainIcon, classes.networkIcon), cx(classes.badgeIcon, classes.providerIcon)]
     // #endregion
-
     return (
         <div
             className={classes.root}
@@ -59,7 +60,7 @@ export const PlatformAvatar = (props: PlatformAvatarProps) => {
                 height: size,
                 width: size,
             }}>
-            {networkIcon ? (
+            {networkIcon ?
                 <PersonaImageIcon
                     classes={{
                         icon: names[0],
@@ -67,16 +68,15 @@ export const PlatformAvatar = (props: PlatformAvatarProps) => {
                     size={size}
                     icon={networkIcon}
                 />
-            ) : (
-                <Icons.Masks
+            :   <Icons.Masks
                     size={size}
                     sx={{
                         display: 'inline-block',
                         borderRadius: '50%',
                     }}
                 />
-            )}
-            {providerIcon ? (
+            }
+            {providerIcon ?
                 <PersonaImageIcon
                     classes={{
                         icon: names[1],
@@ -84,7 +84,7 @@ export const PlatformAvatar = (props: PlatformAvatarProps) => {
                     size={badgeSize}
                     icon={providerIcon}
                 />
-            ) : null}
+            :   null}
         </div>
     )
-}
+})

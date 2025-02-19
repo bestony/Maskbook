@@ -1,13 +1,14 @@
-/// <reference path="./blocto-fcl.d.ts" />
+/// <reference path="./blocto-fcl.d.ts" preserve="true" />
 /// <reference types="@masknet/global-types/webpack" />
 
 import type { MutateOptions, BlockObject, TransactionObject, QueryOptions, BlockHeaderObject } from '@blocto/fcl'
+import type { Web3State as Web3StateShared } from '@masknet/web3-shared-base'
 
 export enum ChainId {
-    Mainnet = 1,
-    Testnet = 2,
     // For any chains not supported yet.
     Invalid = 0,
+    Mainnet = 1,
+    Testnet = 2,
 }
 
 export enum AddressType {
@@ -26,8 +27,6 @@ export enum NetworkType {
 export enum ProviderType {
     None = 'None',
     Blocto = 'Blocto',
-    Dapper = 'Dapper',
-    Ledger = 'Ledger',
 }
 
 export enum AssetProviderType {
@@ -49,11 +48,13 @@ export enum TransactionStatusCode {
 }
 
 export type Web3 = typeof import('@blocto/fcl')
-export type Web3Provider = {}
+export type Web3Provider = Record<string, never>
 export type Signature = string
 export type GasOption = never
 export type Block = BlockObject
 export type BlockHeader = BlockHeaderObject
+export type MessageRequest = never
+export type MessageResponse = never
 export type Operation = never
 export type Transaction = MutateOptions
 export type TransactionQuery = QueryOptions
@@ -61,3 +62,37 @@ export type TransactionReceipt = never
 export type TransactionDetailed = TransactionObject
 export type TransactionSignature = never
 export type TransactionParameter = string
+
+export type Web3State = Web3StateShared<
+    ChainId,
+    SchemaType,
+    ProviderType,
+    NetworkType,
+    MessageRequest,
+    MessageResponse,
+    Transaction,
+    TransactionParameter
+>
+
+export type Web3Definition = {
+    ChainId: ChainId
+    AddressType: AddressType
+    SchemaType: SchemaType
+    ProviderType: ProviderType
+    NetworkType: NetworkType
+    Signature: Signature
+    GasOption: GasOption
+    Block: Block
+    MessageRequest: MessageRequest
+    MessageResponse: MessageResponse
+    Operation: Operation
+    Transaction: Transaction
+    TransactionReceipt: TransactionReceipt
+    TransactionDetailed: TransactionDetailed
+    TransactionSignature: TransactionSignature
+    TransactionParameter: TransactionParameter
+    UserOperation: Operation
+    Web3: Web3
+    Web3Provider: Web3Provider
+    Web3State: Web3State
+}

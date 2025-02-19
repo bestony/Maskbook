@@ -1,20 +1,18 @@
-import { createLookupTableResolver } from '@masknet/shared-base'
-import { ChainId } from '@masknet/web3-shared-evm'
+import { delay } from '@masknet/kit'
+import { type ChainId } from '@masknet/web3-shared-evm'
 import { mapKeys } from 'lodash-es'
 import io from 'socket.io-client'
+import { zerionChainIdResolver } from './helpers.js'
 import {
     SocketRequestNameSpace,
-    type SocketRequestBody,
-    type SocketNameSpace,
     SocketRequestType,
+    type SocketNameSpace,
+    type SocketRequestBody,
     type SocketResponseBody,
     type ZerionAssetResponseBody,
-    type ZerionCoinResponseBody,
-    type ZerionTransactionResponseBody,
-    type ZerionNonFungibleTokenResponseBody,
-    type ZerionNonFungibleCollectionBody,
-    type ZerionNonFungibleTokenInfoBody,
     type ZerionGasResponseBody,
+    type ZerionNonFungibleTokenResponseBody,
+    type ZerionTransactionResponseBody,
 } from './types.js'
 
 const ZERION_API = 'wss://api-v4.zerion.io'
@@ -22,21 +20,6 @@ const ZERION_API = 'wss://api-v4.zerion.io'
 const ZERION_TOKEN = 'Mask.yEUEfDnoxgLBwNEcYPVussxxjdrGwapj'
 
 let socket: SocketIOClient.Socket | null = null
-
-export const zerionChainIdResolver = createLookupTableResolver<string, ChainId | undefined>(
-    {
-        ethereum: ChainId.Mainnet,
-        optimism: ChainId.Optimism,
-        fantom: ChainId.Fantom,
-        avalanche: ChainId.Avalanche,
-        arbitrum: ChainId.Arbitrum,
-        aurora: ChainId.Aurora,
-        'binance-smart-chain': ChainId.BSC,
-        xdai: ChainId.xDai,
-        polygon: ChainId.Matic,
-    },
-    () => undefined,
-)
 
 function createSocket(namespace: SocketRequestNameSpace = SocketRequestNameSpace.Address) {
     if (socket?.connected) return socket
@@ -60,7 +43,7 @@ function verify(request: SocketRequestBody, response: any) {
             return JSON.stringify(requestValue) === JSON.stringify(responseMetaValue)
         }
         if (typeof requestValue === 'string') {
-            return responseMetaValue?.toLowerCase() === requestValue?.toLowerCase()
+            return responseMetaValue?.toLowerCase() === requestValue.toLowerCase()
         }
         return responseMetaValue === requestValue
     })
@@ -99,23 +82,6 @@ export async function getAssetsList(address: string, scope: string) {
     )) as ZerionAssetResponseBody
 }
 
-export async function getCoinsByKeyword(keyword: string) {
-    return (await subscribeFromZerion(
-        {
-            namespace: SocketRequestNameSpace.Assets,
-            socket: createSocket(SocketRequestNameSpace.Assets),
-        },
-        {
-            scope: ['info'],
-            payload: {
-                search_query: keyword,
-                offset: 0,
-                limit: 100,
-            },
-        },
-    )) as ZerionCoinResponseBody
-}
-
 export async function getTransactionList(address: string, scope: string, page?: number, size = 30) {
     return (await subscribeFromZerion(
         {
@@ -136,66 +102,43 @@ export async function getTransactionList(address: string, scope: string, page?: 
 }
 
 export async function getNonFungibleAsset(account: string, address: string, tokenId: string) {
-    return (await subscribeFromZerion(
-        {
-            namespace: SocketRequestNameSpace.Address,
-            socket: createSocket(),
-        },
-        {
-            scope: ['nft'],
-            payload: {
-                address: account,
-                nft_asset_code: `${address}:${tokenId}`,
+    return Promise.race([
+        subscribeFromZerion(
+            {
+                namespace: SocketRequestNameSpace.Address,
+                socket: createSocket(),
             },
-        },
-    )) as ZerionNonFungibleTokenResponseBody
+            {
+                scope: ['nft'],
+                payload: {
+                    address: account,
+                    nft_asset_code: `${address}:${tokenId}`,
+                },
+            },
+        ) as Promise<ZerionNonFungibleTokenResponseBody>,
+        delay(5_000),
+    ])
 }
 
 export async function getNonFungibleAssets(address: string, page?: number, size = 20, contract_address?: string) {
-    return (await subscribeFromZerion(
-        { namespace: SocketRequestNameSpace.Address, socket: createSocket() },
-        {
-            scope: ['nft'],
-            payload: {
-                address,
-                contract_addresses: contract_address ? [contract_address] : [],
-                mode: 'nft',
-                nft_limit: size,
-                nft_offset: (page ?? 0) * size,
+    return Promise.race([
+        subscribeFromZerion(
+            { namespace: SocketRequestNameSpace.Address, socket: createSocket() },
+            {
+                scope: ['nft'],
+                payload: {
+                    address,
+                    contract_addresses: contract_address ? [contract_address] : [],
+                    mode: 'nft',
+                    nft_limit: size,
+                    nft_offset: (page ?? 0) * size,
+                },
             },
-        },
-        SocketRequestType.GET,
-    )) as ZerionNonFungibleTokenResponseBody
+            SocketRequestType.GET,
+        ) as Promise<ZerionNonFungibleTokenResponseBody>,
+        delay(5_000),
+    ])
 }
-
-export async function getNonFungibleCollection(slug: string) {
-    return (await subscribeFromZerion(
-        {
-            namespace: SocketRequestNameSpace.Assets,
-            socket: createSocket(SocketRequestNameSpace.Assets),
-        },
-        {
-            scope: ['nft-collection-info'],
-            payload: {
-                collection_slug: slug,
-            },
-        },
-    )) as ZerionNonFungibleCollectionBody
-}
-
-export async function getNonFungibleInfo(address: string, tokenId: string) {
-    return (await subscribeFromZerion(
-        { namespace: SocketRequestNameSpace.Assets, socket: createSocket(SocketRequestNameSpace.Assets) },
-        {
-            scope: ['nft-info'],
-            payload: {
-                asset_code: `${address}:${tokenId}`,
-                currency: 'eth',
-            },
-        },
-    )) as ZerionNonFungibleTokenInfoBody
-}
-
 export async function getGasOptions(chainId: ChainId) {
     const response = (await subscribeFromZerion(
         {
@@ -213,5 +156,5 @@ export async function getGasOptions(chainId: ChainId) {
 
     const gasOptionsCollection = mapKeys(response.payload['chain-prices'], (_, key) => zerionChainIdResolver(key))
 
-    return gasOptionsCollection[chainId]?.info.classic
+    return gasOptionsCollection[chainId].info.classic
 }

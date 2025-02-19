@@ -13,25 +13,28 @@ import {
     type DecryptIO,
     type DecryptProgress,
     DecryptProgressKind,
-    DecryptError,
     type DecryptEphemeralECDH_PostKey,
     type DecryptSuccess,
     type DecryptIntermediateProgress,
     DecryptIntermediateProgressKind,
     type DecryptStaticECDH_PostKey,
+    DecryptErrorReasons,
+    makeDecryptError,
 } from './DecryptionTypes.js'
 import { deriveAESByECDH_version38OrOlderExtraSteps } from './v38-ecdh.js'
 export * from './DecryptionTypes.js'
-const ErrorReasons = DecryptError.Reasons
+
 type Version = PayloadParseResult.Payload['version']
 export async function* decrypt(options: DecryptOptions, io: DecryptIO): AsyncIterableIterator<DecryptProgress> {
     const { author: _author, encrypted: _encrypted, encryption: _encryption, version } = options.message
     const { authorPublicKey: _authorPublicKey } = options.message
 
-    if (_encryption.err) return yield new DecryptError(ErrorReasons.PayloadBroken, _encryption.val)
-    if (_encrypted.err) return yield new DecryptError(ErrorReasons.PayloadBroken, _encrypted.val)
-    const encryption = _encryption.val
-    const encrypted = _encrypted.val
+    if (_encryption.isErr())
+        return yield makeDecryptError(DecryptErrorReasons.PayloadBroken, { cause: _encryption.error })
+    if (_encrypted.isErr())
+        return yield makeDecryptError(DecryptErrorReasons.PayloadBroken, { cause: _encrypted.error })
+    const encryption = _encryption.value
+    const encrypted = _encrypted.value
 
     // ! try decrypt by cache
     {
@@ -42,25 +45,24 @@ export async function* decrypt(options: DecryptOptions, io: DecryptIO): AsyncIte
 
     if (encryption.type === 'public') {
         const { AESKey, iv } = encryption
-        if (AESKey.err) return yield new DecryptError(ErrorReasons.PayloadBroken, AESKey.val)
-        if (iv.err) return yield new DecryptError(ErrorReasons.PayloadBroken, iv.val)
+        if (AESKey.isErr()) return yield makeDecryptError(DecryptErrorReasons.PayloadBroken, { cause: AESKey.error })
+        if (iv.isErr()) return yield makeDecryptError(DecryptErrorReasons.PayloadBroken, { cause: iv.error })
         // Not calling setPostCache here. It's public post and saving key is wasting storage space.
-        return yield* decryptWithPostAESKey(version, AESKey.val, iv.val, encrypted, options.onDecrypted)
+        return yield* decryptWithPostAESKey(version, AESKey.value, iv.value, encrypted, options.onDecrypted)
     } else if (encryption.type === 'E2E') {
         const { iv: _iv, ownersAESKeyEncrypted } = encryption
-        if (_iv.err) return yield new DecryptError(ErrorReasons.PayloadBroken, _iv.val)
-        const iv = _iv.val
+        if (_iv.isErr()) return yield makeDecryptError(DecryptErrorReasons.PayloadBroken, { cause: _iv.error })
+        const iv = _iv.value
         const author = _author.unwrapOr(None)
 
         // #region // ! decrypt by local key. This only happens in v38 or older.
         if (options.message.version <= -38) {
-            const hasAuthorLocalKey = author.some
-                ? io.hasLocalKeyOf(author.val).catch(() => false)
-                : Promise.resolve(false)
-            if (ownersAESKeyEncrypted.ok) {
+            const hasAuthorLocalKey =
+                author.isSome() ? io.hasLocalKeyOf(author.value).catch(() => false) : Promise.resolve(false)
+            if (ownersAESKeyEncrypted.isOk()) {
                 try {
                     const aes_raw = new Uint8Array(
-                        await io.decryptByLocalKey(author.unwrapOr(null), ownersAESKeyEncrypted.val, iv),
+                        await io.decryptByLocalKey(author.unwrapOr(null), ownersAESKeyEncrypted.value, iv),
                     )
                     const aes = await importAESKeyFromJWKFromTextEncoder(aes_raw)
                     io.setPostKeyCache(aes.unwrap()).catch(() => {})
@@ -70,14 +72,17 @@ export async function* decrypt(options: DecryptOptions, io: DecryptIO): AsyncIte
                         // If we fall into this branch, it means we failed to decrypt as author.
                         // Since we will not ECDHE to myself when encrypting,
                         // it does not make sense to try the following steps (because it will never have a result).
-                        return yield new DecryptError(ErrorReasons.CannotDecryptAsAuthor, err)
+                        return yield makeDecryptError(DecryptErrorReasons.CannotDecryptAsAuthor, { cause: err })
                     }
                     // fall through
                 }
             } else {
                 if (await hasAuthorLocalKey) {
                     // If the ownersAESKeyEncrypted is corrupted and we're the author, we cannot do anything to continue.
-                    return yield new DecryptError(ErrorReasons.CannotDecryptAsAuthor, ownersAESKeyEncrypted.val)
+                    return yield makeDecryptError(
+                        DecryptErrorReasons.CannotDecryptAsAuthor,
+                        ownersAESKeyEncrypted.error,
+                    )
                 }
                 // fall through
             }
@@ -93,15 +98,16 @@ export async function* decrypt(options: DecryptOptions, io: DecryptIO): AsyncIte
             // Static ECDH
             // to do static ECDH, we need to have the authors public key first. bail if not found.
             const authorECPub = await Result.wrapAsync(async () => {
-                if (authorPublicKey.some) return authorPublicKey.val.key as EC_Public_CryptoKey
+                if (authorPublicKey.isSome()) return authorPublicKey.value.key as EC_Public_CryptoKey
                 return io.queryAuthorPublicKey(author.unwrapOr(null), options.signal)
             })
-            if (authorECPub.err) return yield new DecryptError(ErrorReasons.AuthorPublicKeyNotFound, authorECPub.val)
-            if (!authorECPub.val) return yield new DecryptError(ErrorReasons.AuthorPublicKeyNotFound, undefined)
+            if (authorECPub.isErr())
+                return yield makeDecryptError(DecryptErrorReasons.AuthorPublicKeyNotFound, { cause: authorECPub.error })
+            if (!authorECPub.value) return yield makeDecryptError(DecryptErrorReasons.AuthorPublicKeyNotFound)
             return yield* v38To40StaticECDH(
                 version,
                 io,
-                authorECPub.val,
+                authorECPub.value,
                 iv,
                 encrypted,
                 options.signal,
@@ -131,9 +137,9 @@ async function* v37ECDHE(
     ).then((x) => x.flat())
 
     async function* postKey() {
-        if (encryption.ownersAESKeyEncrypted.ok) {
+        if (encryption.ownersAESKeyEncrypted.isOk()) {
             const key: DecryptEphemeralECDH_PostKey = {
-                encryptedPostKey: encryption.ownersAESKeyEncrypted.val,
+                encryptedPostKey: encryption.ownersAESKeyEncrypted.value,
             }
             yield key
         }
@@ -197,28 +203,28 @@ async function* decryptByECDH(
         // TODO: how to deal with signature?
         // TODO: what to do if provider throws?
         const derivedKeys =
-            type === 'static-v38-or-older'
-                ? await derive((_ as DecryptStaticECDH_PostKey).postKeyIV || iv)
-                : await derive((_ as DecryptEphemeralECDH_PostKey).ephemeralPublicKey).then((aesArr) =>
-                      // TODO: we reuse iv in ephemeral mode, is that safe?
-                      aesArr.map((aes) => [aes, iv] as const),
-                  )
+            type === 'static-v38-or-older' ?
+                await derive((_ as DecryptStaticECDH_PostKey).postKeyIV || iv)
+            :   await derive((_ as DecryptEphemeralECDH_PostKey).ephemeralPublicKey).then((aesArr) =>
+                    // TODO: we reuse iv in ephemeral mode, is that safe?
+                    aesArr.map((aes) => [aes, iv] as const),
+                )
         for (const [derivedKey, derivedKeyNewIV] of derivedKeys) {
             const possiblePostKey = await andThenAsync(
                 decryptWithAES(derivedKey, derivedKeyNewIV, encryptedPostKey),
                 postKeyDecoder,
             )
-            if (possiblePostKey.err) continue
-            const decrypted = await decryptWithAES(possiblePostKey.val, iv, encrypted)
-            if (decrypted.err) continue
+            if (possiblePostKey.isErr()) continue
+            const decrypted = await decryptWithAES(possiblePostKey.value, iv, encrypted)
+            if (decrypted.isErr()) continue
 
-            io.setPostKeyCache(possiblePostKey.val).catch(() => {})
+            io.setPostKeyCache(possiblePostKey.value).catch(() => {})
             // If we'd able to decrypt the raw message, we will stop here.
             // because try further key cannot resolve the problem of parseTypedMessage failed.
-            return yield* parseTypedMessage(version, decrypted.val, report)
+            return yield* parseTypedMessage(version, decrypted.value, report)
         }
     }
-    return void (yield new DecryptError(ErrorReasons.NotShareTarget, undefined))
+    return void (yield makeDecryptError(DecryptErrorReasons.NotShareTarget))
 }
 
 async function* decryptWithPostAESKey(
@@ -228,9 +234,9 @@ async function* decryptWithPostAESKey(
     encrypted: Uint8Array,
     report: ((message: TypedMessage) => void) | undefined,
 ): AsyncIterableIterator<DecryptProgress> {
-    const { err, val } = await decryptWithAES(postAESKey, iv, encrypted)
-    if (err) return yield new DecryptError(ErrorReasons.DecryptFailed, val)
-    return yield* parseTypedMessage(version, val, report)
+    const _ = await decryptWithAES(postAESKey, iv, encrypted)
+    if (_.isErr()) return yield makeDecryptError(DecryptErrorReasons.DecryptFailed, { cause: _.error })
+    return yield* parseTypedMessage(version, _.value, report)
 }
 
 async function* parseTypedMessage(
@@ -238,13 +244,14 @@ async function* parseTypedMessage(
     raw: Uint8Array,
     report: ((message: TypedMessage) => void) | undefined,
 ): AsyncIterableIterator<DecryptProgress> {
-    const { err, val } =
+    const _ =
         version === -37 ? decodeTypedMessageFromDocument(raw) : decodeTypedMessageFromDeprecatedFormat(raw, version)
-    if (err) return yield new DecryptError(ErrorReasons.PayloadDecryptedButTypedMessageBroken, val)
+    if (_.isErr())
+        return yield makeDecryptError(DecryptErrorReasons.PayloadDecryptedButTypedMessageBroken, { cause: _.error })
     try {
-        report?.(val)
+        report?.(_.value)
     } catch {}
-    return yield progress(DecryptProgressKind.Success, { content: val })
+    return yield progress(DecryptProgressKind.Success, { content: _.value })
 }
 
 // uint8 |> TextDecoder |> JSON.parse |> importAESKeyFromJWK
@@ -259,7 +266,7 @@ function importAESKeyFromJWKFromTextEncoder(aes_raw: Uint8Array) {
 
 function importAESKeyFromRaw(aes_raw: Uint8Array) {
     return Result.wrapAsync(async () => {
-        return crypto.subtle.importKey('raw', aes_raw, { name: 'AES-GCM', length: 256 }, false, [
+        return crypto.subtle.importKey('raw', aes_raw, { name: 'AES-GCM', length: 256 }, true, [
             'decrypt',
         ]) as Promise<AESCryptoKey>
     })

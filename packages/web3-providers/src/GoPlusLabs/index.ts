@@ -4,8 +4,6 @@ import { BigNumber } from 'bignumber.js'
 import { EMPTY_LIST } from '@masknet/shared-base'
 import { ChainId, getGoPlusLabsConstants, isValidChainId, type SchemaType } from '@masknet/web3-shared-evm'
 import { type FungibleTokenSpender, isSameAddress, type NonFungibleContractSpender } from '@masknet/web3-shared-base'
-import type { AuthorizationAPI } from '../types/Authorization.js'
-import type { SecurityAPI } from '../types/Security.js'
 import { GO_PLUS_LABS_ROOT_URL, INFINITE_VALUE } from './constants.js'
 import {
     type GoPlusNFTInfo,
@@ -15,20 +13,21 @@ import {
     SecurityMessageLevel,
 } from './types.js'
 import { SecurityMessages } from './rules.js'
-import { getAllMaskDappContractInfo } from '../Rabby/helpers.js'
-import { fetchJSON } from '../entry-helpers.js'
+import { getAllMaskDappContractInfo } from '../helpers/getAllMaskDappContractInfo.js'
+import { fetchJSON } from '../helpers/fetchJSON.js'
+import type { AuthorizationAPI, SecurityAPI } from '../entry-types.js'
 
 function checkInWhitelist(chainId = ChainId.Mainnet, address: string) {
     const { WHITE_LISTS } = getGoPlusLabsConstants(chainId)
     return WHITE_LISTS?.some((x) => isSameAddress(x, address))
 }
 
-export interface SupportedChainResponse {
+interface SupportedChainResponse {
     id: string
     name: string
 }
 
-export class GoPlusAuthorizationAPI implements AuthorizationAPI.Provider<ChainId> {
+class GoPlusAuthorizationAPI implements AuthorizationAPI.Provider<ChainId> {
     async getSupportChainIds() {
         return [ChainId.Mainnet, ChainId.BSC]
     }
@@ -45,7 +44,7 @@ export class GoPlusAuthorizationAPI implements AuthorizationAPI.Provider<ChainId
             result: GoPlusNFTInfo[]
         }>(urlcat(GO_PLUS_LABS_ROOT_URL, 'api/v2/nft1155_approval_security/:chainId', { chainId, addresses }))
 
-        if (!response.result?.length && !nft1155Response.result?.length) return EMPTY_LIST
+        if (!response.result.length && !nft1155Response.result.length) return EMPTY_LIST
 
         return [...response.result, ...nft1155Response.result]
             .reduce<NFTSpenderInfo[]>((acc, cur) => {
@@ -102,7 +101,7 @@ export class GoPlusAuthorizationAPI implements AuthorizationAPI.Provider<ChainId
             result: GoPlusTokenInfo[]
         }>(urlcat(GO_PLUS_LABS_ROOT_URL, 'api/v2/token_approval_security/:chainId', { chainId, addresses }))
 
-        if (!response?.result?.length) return EMPTY_LIST
+        if (!response.result.length) return EMPTY_LIST
 
         return response.result
             .reduce<GoPlusTokenSpender[]>((acc, cur) => {
@@ -114,9 +113,9 @@ export class GoPlusAuthorizationAPI implements AuthorizationAPI.Provider<ChainId
                             name: rawSpender.address_info.tag,
                             address: rawSpender.approved_contract,
                             amount:
-                                rawSpender.approved_amount === 'Unlimited'
-                                    ? INFINITE_VALUE
-                                    : new BigNumber(rawSpender.approved_amount).toNumber(),
+                                rawSpender.approved_amount === 'Unlimited' ?
+                                    INFINITE_VALUE
+                                :   new BigNumber(rawSpender.approved_amount).toNumber(),
                             tokenInfo,
                         }
 
@@ -145,8 +144,8 @@ export class GoPlusAuthorizationAPI implements AuthorizationAPI.Provider<ChainId
     }
 }
 
-export class GoPlusLabsAPI implements SecurityAPI.Provider<ChainId> {
-    async getTokenSecurity(chainId: ChainId, addresses: string[]) {
+export class GoPlusLabs {
+    static async getTokenSecurity(chainId: ChainId, addresses: string[]) {
         const response = await fetchJSON<{
             code: 0 | 1
             message: 'OK' | string
@@ -165,7 +164,10 @@ export class GoPlusLabsAPI implements SecurityAPI.Provider<ChainId> {
         return createTokenSecurity(chainId, response.result)
     }
 
-    async getAddressSecurity(chainId: ChainId, address: string): Promise<SecurityAPI.AddressSecurity | undefined> {
+    static async getAddressSecurity(
+        chainId: ChainId,
+        address: string,
+    ): Promise<SecurityAPI.AddressSecurity | undefined> {
         if (!isValidChainId(chainId)) return
         const response = await fetchJSON<{
             code: 0 | 1
@@ -182,7 +184,7 @@ export class GoPlusLabsAPI implements SecurityAPI.Provider<ChainId> {
         return response.result
     }
 
-    async getSupportedChain(): Promise<Array<SecurityAPI.SupportedChain<ChainId>>> {
+    static async getSupportedChain(): Promise<Array<SecurityAPI.SupportedChain<ChainId>>> {
         const { code, result } = await fetchJSON<{
             code: 0 | 1
             message: 'OK' | string
@@ -193,14 +195,15 @@ export class GoPlusLabsAPI implements SecurityAPI.Provider<ChainId> {
         return result.map((x) => ({ chainId: parseInt(x.id) ?? ChainId.Mainnet, name: x.name }))
     }
 }
+export const GoPlusAuthorization = new GoPlusAuthorizationAPI()
 
-export const createTokenSecurity = (
+function createTokenSecurity(
     chainId: ChainId,
     response: Record<
         string,
         SecurityAPI.ContractSecurity & SecurityAPI.TokenSecurity & SecurityAPI.TradingSecurity
     > = {},
-) => {
+) {
     if (isEmpty(response) || !isValidChainId(chainId)) return
     const entity = first(Object.entries(response))
     if (!entity) return
@@ -219,31 +222,32 @@ export const createTokenSecurity = (
     }
 }
 
-export const isHighRisk = (tokenSecurity?: SecurityAPI.TokenSecurityType) => {
+function isHighRisk(tokenSecurity?: SecurityAPI.TokenSecurityType) {
     if (!tokenSecurity) return false
-    return tokenSecurity.trust_list === '1'
-        ? false
-        : SecurityMessages.filter(
-              (x) =>
-                  x.condition(tokenSecurity) &&
-                  x.level !== SecurityMessageLevel.Safe &&
-                  !x.shouldHide(tokenSecurity) &&
-                  x.level === SecurityMessageLevel.High,
-          ).sort((a, z) => {
-              if (a.level === SecurityMessageLevel.High) return -1
-              if (z.level === SecurityMessageLevel.High) return 1
-              return 0
-          }).length > 0
+    return tokenSecurity.trust_list === '1' ?
+            false
+        :   SecurityMessages.filter(
+                (x) =>
+                    x.condition(tokenSecurity) &&
+                    x.level !== SecurityMessageLevel.Safe &&
+                    !x.shouldHide(tokenSecurity) &&
+                    x.level === SecurityMessageLevel.High,
+            ).sort((a, z) => {
+                if (a.level === SecurityMessageLevel.High) return -1
+                if (z.level === SecurityMessageLevel.High) return 1
+                return 0
+            }).length > 0
 }
 
-export const getMessageList = (tokenSecurity: SecurityAPI.TokenSecurityType) =>
-    tokenSecurity.trust_list === '1'
-        ? []
-        : SecurityMessages.filter(
-              (x) =>
-                  x.condition(tokenSecurity) && x.level !== SecurityMessageLevel.Safe && !x.shouldHide(tokenSecurity),
-          ).sort((a, z) => {
-              if (a.level === SecurityMessageLevel.High) return -1
-              if (z.level === SecurityMessageLevel.High) return 1
-              return 0
-          })
+function getMessageList(tokenSecurity: SecurityAPI.TokenSecurityType) {
+    return tokenSecurity.trust_list === '1' ?
+            []
+        :   SecurityMessages.filter(
+                (x) =>
+                    x.condition(tokenSecurity) && x.level !== SecurityMessageLevel.Safe && !x.shouldHide(tokenSecurity),
+            ).sort((a, z) => {
+                if (a.level === SecurityMessageLevel.High) return -1
+                if (z.level === SecurityMessageLevel.High) return 1
+                return 0
+            })
+}

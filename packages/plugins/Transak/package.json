@@ -1,11 +1,18 @@
 {
   "name": "@masknet/plugin-transak",
   "private": true,
+  "sideEffects": [
+    "./src/register.ts"
+  ],
   "type": "module",
   "exports": {
     ".": {
       "mask-src": "./src/index.ts",
       "default": "./dist/index.js"
+    },
+    "./register": {
+      "mask-src": "./src/register.ts",
+      "default": "./dist/register.js"
     }
   },
   "dependencies": {
@@ -16,9 +23,35 @@
     "@masknet/shared-base-ui": "workspace:^",
     "@masknet/theme": "workspace:^",
     "@masknet/web3-shared-evm": "workspace:^",
-    "@types/json-stable-stringify": "^1.0.34",
-    "json-stable-stringify": "^1.0.2",
-    "react-use": "^17.4.0",
-    "ts-results": "^3.3.0"
+    "@types/json-stable-stringify": "^1.0.36",
+    "json-stable-stringify": "^1.1.1",
+    "react-use": "^17.5.0"
+  },
+  "lingui": {
+    "compileNamespace": "json",
+    "locales": [
+      "en-US",
+      "ja-JP",
+      "ko-KR",
+      "zh-CN",
+      "zh-TW"
+    ],
+    "fallbackLocales": {
+      "zh-CN": "zh-TW",
+      "zh-TW": "zh-CN",
+      "default": "en-US"
+    },
+    "formatOptions": {
+      "origins": true,
+      "lineNumbers": false
+    },
+    "catalogs": [
+      {
+        "path": "src/locale/{locale}",
+        "include": [
+          "src"
+        ]
+      }
+    ]
   }
 }

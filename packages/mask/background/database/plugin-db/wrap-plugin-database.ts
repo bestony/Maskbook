@@ -1,4 +1,4 @@
-import type { IDBPTransaction } from 'idb/with-async-ittr'
+import type { IDBPTransaction } from 'idb'
 import type { Plugin, IndexableTaggedUnion } from '@masknet/plugin-infra'
 import { createPluginDBAccess, type PluginDatabase, pluginDataHasValidKeyPath, toStore } from './base.js'
 
@@ -26,6 +26,8 @@ export function createPluginDatabase<Data extends IndexableTaggedUnion>(
     let ended = false
     signal?.addEventListener('abort', () => {
         // give some extra time after the plugin shutdown to store data.
+        // this setTimeout is ok because it only last 1.5 seconds.
+        // eslint-disable-next-line no-restricted-globals
         setTimeout(() => (ended = true), 1500)
     })
     function key(data: IndexableTaggedUnion) {

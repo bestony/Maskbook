@@ -1,46 +1,62 @@
-const devOnly = process.env.NODE_ENV === 'development'
-const insiderOnly = process.env.channel === 'insider' || devOnly
-const betaOrInsiderOnly = insiderOnly || process.env.channel === 'beta'
+import { env } from './buildInfo.js'
+import { Environment, isEnvironment } from '@dimensiondev/holoflows-kit'
+import type { FlagSpec } from './flag-spec.js'
 
-// TODO: In future, we can turn this object into a Proxy to receive flags from remote
+const isTest = process.env.NODE_ENV === 'test'
+const isDev = process.env.NODE_ENV === 'development'
+const isProd = process.env.NODE_ENV === 'production'
+const isInsider = env.channel === 'insider' || isDev
+const isBeta = isInsider || env.channel === 'beta'
 
-export const flags = {
-    isolated_dashboard_bridge_enabled: false,
-    mask_SDK_ready: betaOrInsiderOnly,
-    use_register_content_script: true,
-    /** Firefox has a special API that can inject to the document with a higher permission. */
-    has_firefox_xray_vision: process.env.engine === 'firefox',
-    support_testnet_switch: betaOrInsiderOnly,
-    // #region Experimental features
-    trader_all_api_cached_enabled: devOnly,
-    /** Prohibit the use of test networks in production */
-    wallet_allow_testnet: betaOrInsiderOnly || process.env.NODE_ENV !== 'production',
-    // #endregion
+export const flags: FlagSpec = {
+    mask_sdk_enabled: isBeta,
+    support_testnet_switch: isBeta,
 
-    bsc_enabled: true,
-    polygon_enabled: true,
-    arbitrum_enabled: true,
-    xdai_enabled: true,
-    optimism_enabled: true,
-    avalanche_enabled: true,
-    fantom_enabled: true,
-    celo_enabled: true,
-    aurora_enabled: true,
-    astar_enabled: true,
-    nft_airdrop_enabled: false,
-    post_actions_enabled: true,
-    next_id_tip_enabled: true,
+    shadowRootInit: {
+        mode:
+            (
+                '__REACT_DEVTOOLS_GLOBAL_HOOK__' in globalThis ||
+                isBeta ||
+                isTest ||
+                !isEnvironment(Environment.HasBrowserAPI)
+            ) ?
+                'open'
+            :   'closed',
+        delegatesFocus: true,
+    } as const satisfies ShadowRootInit,
 
     using_emoji_flag: true,
+    post_actions_enabled: true,
+    sandboxedPluginRuntime: false,
 
-    // we still need to handle image encoding
-    v37PayloadDefaultEnabled: false, // new Date() > new Date('2022-07-01'),
-    i18nTranslationHotUpdate: true,
-    sandboxedPluginRuntime: insiderOnly,
+    // twitter
+    twitter_token:
+        'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA',
 
-    simplehash_ab_percentage: 50,
-} as const
+    // sentry
+    sentry_earliest_version: env.VERSION,
+    sentry_sample_rate: 0.05,
+    sentry_enabled: isProd,
+    sentry_event_enabled: isProd,
+    sentry_exception_enabled: isProd,
+    sentry_fetch_transaction_enabled: isProd,
+    sentry_async_transaction_enabled: isDev,
 
-if (process.env.NODE_ENV === 'development') {
-    console.log('Mask Network starts with flags:', flags)
+    // mixpanel
+    mixpanel_earliest_version: env.VERSION,
+    mixpanel_sample_rate: 1,
+    mixpanel_enabled: isProd,
+    mixpanel_event_enabled: isProd,
+    mixpanel_exception_enabled: isProd,
+    mixpanel_project_token: 'b815b822fd131650e92ff8539eb5e793',
+
+    // wallet connect
+    wc_relay_url: 'wss://relay.walletconnect.com',
+    wc_project_id: '8f1769933420afe8873860925fcca14f',
+    wc_mode: isProd ? 'error' : 'debug',
+    wc_enabled: process.env.NODE_ENV !== 'test',
+
+    globalDisabledPlugins: [],
 }
+
+Object.freeze(flags.shadowRootInit)

@@ -1,11 +1,11 @@
-import { createPluginMessage, type PluginMessageEmitter, createPluginRPC } from '@masknet/plugin-infra'
+import { getPluginMessage, type PluginMessageEmitter } from '@masknet/plugin-infra'
 import { PLUGIN_ID } from './constants.js'
 
 type DialogUpdated = {
     open: boolean
 }
 
-interface DebuggerMessages {
+export interface DebuggerMessages {
     /**
      * Open console dialog
      */
@@ -25,13 +25,6 @@ interface DebuggerMessages {
      * Open widget dialog
      */
     widgetDialogUpdated: DialogUpdated
-
-    rpc: unknown
 }
 
-export const PluginDebuggerMessages: PluginMessageEmitter<DebuggerMessages> = createPluginMessage(PLUGIN_ID)
-export const PluginDebuggerRPC = createPluginRPC(
-    PLUGIN_ID,
-    () => import('./services/index.js'),
-    PluginDebuggerMessages.rpc,
-)
+export const PluginDebuggerMessages: PluginMessageEmitter<DebuggerMessages> = getPluginMessage(PLUGIN_ID)

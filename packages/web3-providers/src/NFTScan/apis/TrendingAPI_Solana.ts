@@ -2,14 +2,14 @@ import urlcat from 'urlcat'
 import { compact } from 'lodash-es'
 import { type NonFungibleCollectionOverview, SourceType, TokenType } from '@masknet/web3-shared-base'
 import type { Web3Helper } from '@masknet/web3-helpers'
-import { NetworkPluginID } from '@masknet/shared-base'
+import { isDomainOrSubdomainOf, NetworkPluginID, twitterDomainMigrate } from '@masknet/shared-base'
 import type { ChainId } from '@masknet/web3-shared-solana'
 import type { Response } from '../types/index.js'
 import { resolveNFTScanHostName } from '../helpers/utils.js'
 import { fetchFromNFTScanV2 } from '../helpers/Solana.js'
 import type { NonFungibleTokenAPI, TrendingAPI } from '../../entry-types.js'
 
-export class NFTScanTrendingAPI_Solana implements TrendingAPI.Provider<ChainId> {
+class NFTScanTrendingAPI_Solana implements TrendingAPI.Provider<ChainId> {
     private async getCollection(chainId: ChainId, id: string): Promise<NonFungibleTokenAPI.Collection | undefined> {
         const path = urlcat('/api/sol/collections/:collection', {
             collection: id,
@@ -50,32 +50,11 @@ export class NFTScanTrendingAPI_Solana implements TrendingAPI.Provider<ChainId> 
             content: response.data.content.map((x) => {
                 return {
                     ...x,
-                    nftscan_uri: '',
+                    imageURL: '',
                     transaction_link: `${resolveNFTScanHostName(NetworkPluginID.PLUGIN_SOLANA, chainId)}/${x.hash}`,
                 }
             }),
         }
-    }
-
-    getAllCoins(): Promise<TrendingAPI.Coin[]> {
-        throw new Error('To be implemented.')
-    }
-
-    async getCoinsByKeyword(chainId: ChainId, keyword: string): Promise<TrendingAPI.Coin[]> {
-        throw new Error('To be implemented.')
-    }
-
-    getCoinInfoByAddress(address: string): Promise<TrendingAPI.CoinInfo | undefined> {
-        throw new Error('To be implemented.')
-    }
-
-    async getCoinPriceStats(
-        chainId: ChainId,
-        coinId: string,
-        currency: TrendingAPI.Currency,
-        days: number,
-    ): Promise<TrendingAPI.Stat[]> {
-        throw new Error('Method not implemented.')
     }
 
     async getCoinTrending(
@@ -92,7 +71,7 @@ export class NFTScanTrendingAPI_Solana implements TrendingAPI.Provider<ChainId> 
             contracts: [{ chainId, address, pluginID: NetworkPluginID.PLUGIN_SOLANA }],
             currency,
             coin: {
-                id,
+                id: collection.name,
                 name: collection.name,
                 symbol: '',
                 address,
@@ -101,9 +80,9 @@ export class NFTScanTrendingAPI_Solana implements TrendingAPI.Provider<ChainId> 
                 description: collection.description,
                 image_url: collection.logo_url,
                 home_urls: compact([
-                    collection.website
-                        ? collection.website
-                        : `${resolveNFTScanHostName(NetworkPluginID.PLUGIN_SOLANA, chainId)}/${address}`,
+                    collection.website ?
+                        collection.website
+                    :   `${resolveNFTScanHostName(NetworkPluginID.PLUGIN_SOLANA, chainId)}/${address}`,
                 ]),
                 nftscan_url: `${resolveNFTScanHostName(NetworkPluginID.PLUGIN_SOLANA, chainId)}/${address}`,
                 community_urls: [
@@ -111,9 +90,12 @@ export class NFTScanTrendingAPI_Solana implements TrendingAPI.Provider<ChainId> 
                         type: 'twitter',
                         link:
                             collection.twitter &&
-                            (collection.twitter.startsWith('https://twitter.com/')
-                                ? collection.twitter
-                                : `https://twitter.com/${collection.twitter}`),
+                            ((
+                                isDomainOrSubdomainOf(collection.twitter, 'twitter.com') ||
+                                isDomainOrSubdomainOf(collection.twitter, 'x.com')
+                            ) ?
+                                collection.twitter
+                            :   twitterDomainMigrate(`https://x.com/${collection.twitter}`)),
                     },
                     {
                         type: 'facebook',
@@ -128,17 +110,17 @@ export class NFTScanTrendingAPI_Solana implements TrendingAPI.Provider<ChainId> 
                         type: 'instagram',
                         link:
                             collection.instagram &&
-                            (collection.instagram.startsWith('https://instagram.com/')
-                                ? collection.instagram
-                                : `https://www.instagram.com/${collection.instagram}`),
+                            (collection.instagram.startsWith('https://instagram.com/') ?
+                                collection.instagram
+                            :   `https://www.instagram.com/${collection.instagram}`),
                     },
                     {
                         type: 'medium',
                         link:
                             collection.medium &&
-                            (collection.medium.startsWith('https://instagram.com/@')
-                                ? collection.medium
-                                : `https://medium.com/@${collection.medium}`),
+                            (collection.medium.startsWith('https://instagram.com/@') ?
+                                collection.medium
+                            :   `https://medium.com/@${collection.medium}`),
                     },
                     {
                         type: 'reddit',
@@ -160,8 +142,8 @@ export class NFTScanTrendingAPI_Solana implements TrendingAPI.Provider<ChainId> 
             },
             market: {
                 total_supply: collection.items_total,
-                current_price: collection.floor_price,
-                floor_price: collection.floor_price,
+                current_price: collection.floor_price?.toString(),
+                floor_price: collection.floor_price?.toString(),
                 highest_price: undefined,
                 owners_count: collection.owners_total,
                 price_symbol: collection.price_symbol || 'SOL',
@@ -174,8 +156,5 @@ export class NFTScanTrendingAPI_Solana implements TrendingAPI.Provider<ChainId> 
             tickers: [],
         }
     }
-
-    getCoinMarketInfo(symbol: string): Promise<TrendingAPI.MarketInfo> {
-        throw new Error('Method not implemented.')
-    }
 }
+export const NFTScanTrending_Solana = new NFTScanTrendingAPI_Solana()

@@ -1,11 +1,14 @@
-import { InjectedProvider } from './Base.js'
+import { InjectedWalletBridge } from './BaseInjected.js'
 
-export class MetaMaskProvider extends InjectedProvider {
+export class MetaMaskProvider extends InjectedWalletBridge {
     constructor() {
-        super('ethereum')
+        super('ethereum.__metamask__')
     }
 
     override async untilAvailable(): Promise<void> {
-        await super.untilAvailable(() => super.getProperty('isMetaMask') as Promise<boolean>)
+        await super.untilAvailable(async () => {
+            const isMetaMask = await super.getProperty<boolean>('isMetaMask')
+            return !!isMetaMask
+        })
     }
 }

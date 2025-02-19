@@ -3,7 +3,6 @@ import {
     type AESCryptoKey,
     type AESJsonWebKey,
     ECKeyIdentifier,
-    ECKeyIdentifierFromJsonWebKey,
     type EC_Private_JsonWebKey,
     type EC_Public_CryptoKey,
     type EC_Public_JsonWebKey,
@@ -84,7 +83,7 @@ export async function encryptByLocalKey(who: ProfileIdentifier, content: Uint8Ar
     })
     if (!key) throw new Error('No local key found')
     const result = await crypto.subtle.encrypt({ iv, name: 'AES-GCM' }, key, content)
-    return result as Uint8Array
+    return result
 }
 
 async function getLocalKeyOf(id: ProfileIdentifier, tx: FullPersonaDBTransaction<'readonly'>) {
@@ -140,7 +139,7 @@ export async function deriveAESByECDH(pub: EC_Public_CryptoKey, of?: ProfileIden
             deriveResult.set(id, derived as AESCryptoKey)
         }),
     )
-    const failed = result.filter((x): x is PromiseRejectedResult => x.status === 'rejected')
+    const failed = result.filter((x) => x.status === 'rejected')
     if (failed.length) {
         console.warn('Failed to ECDH', ...failed.map((x) => x.reason))
     }
@@ -157,7 +156,7 @@ export async function createPersonaByJsonWebKey(options: {
     mnemonic?: PersonaRecord['mnemonic']
     uninitialized?: boolean
 }): Promise<PersonaIdentifier> {
-    const identifier = await ECKeyIdentifierFromJsonWebKey(options.publicKey)
+    const identifier = (await ECKeyIdentifier.fromJsonWebKey(options.publicKey)).unwrap()
     const record: PersonaRecord = {
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -186,7 +185,7 @@ export async function createProfileWithPersona(
         mnemonic?: PersonaRecord['mnemonic']
     },
 ): Promise<void> {
-    const ec_id = await ECKeyIdentifierFromJsonWebKey(keys.publicKey)
+    const ec_id = (await ECKeyIdentifier.fromJsonWebKey(keys.publicKey)).unwrap()
     const rec: PersonaRecord = {
         createdAt: new Date(),
         updatedAt: new Date(),

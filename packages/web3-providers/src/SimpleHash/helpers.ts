@@ -1,30 +1,49 @@
-import { fetchJSON } from '../entry-helpers.js'
-import { SIMPLE_HASH_URL } from './constants.js'
-import { type Asset, type Collection } from './type.js'
+import { isEmpty, memoize } from 'lodash-es'
+import { unreachable } from '@masknet/kit'
 import {
-    type NonFungibleAsset,
-    TokenType,
-    scale10,
     SourceType,
+    TokenType,
+    type NonFungibleAsset,
     type NonFungibleCollection,
+    ActivityType,
 } from '@masknet/web3-shared-base'
-import { ChainId, SchemaType, chainResolver, WNATIVE, isValidDomain, isValidChainId } from '@masknet/web3-shared-evm'
+import { ChainId, SchemaType, WNATIVE, isValidChainId, resolveImageURL } from '@masknet/web3-shared-evm'
+import { ChainId as SolanaChainId } from '@masknet/web3-shared-solana'
+import { ChainId as FlowChainId } from '@masknet/web3-shared-flow'
+import { queryClient } from '@masknet/shared-base-ui'
+import { Days, NetworkPluginID, createLookupTableResolver } from '@masknet/shared-base'
+import type { Web3Helper } from '@masknet/web3-helpers'
 import { createPermalink } from '../NFTScan/helpers/EVM.js'
+import { EVMChainResolver } from '../Web3/EVM/apis/ResolverAPI.js'
+import { ETH_BLUR_TOKEN_ADDRESS, SIMPLE_HASH_URL, SPAM_SCORE } from './constants.js'
+import { fetchSquashedJSON } from '../helpers/fetchJSON.js'
 import { getAssetFullName } from '../helpers/getAssetFullName.js'
+import { SimpleHash } from '../types/SimpleHash.js'
 
 export async function fetchFromSimpleHash<T>(path: string, init?: RequestInit) {
-    return fetchJSON<T>(`${SIMPLE_HASH_URL}${path}`, {
-        method: 'GET',
-        mode: 'cors',
-        headers: { 'content-type': 'application/json' },
+    return queryClient.fetchQuery<T>({
+        queryKey: ['simple-hash', path],
+        staleTime: 10_000,
+        queryFn: async () => {
+            return fetchSquashedJSON<T>(`${SIMPLE_HASH_URL}${path}`, {
+                method: 'GET',
+                mode: 'cors',
+                headers: { 'content-type': 'application/json' },
+            })
+        },
     })
 }
 
-export function createNonFungibleAsset(asset: Asset): NonFungibleAsset<ChainId, SchemaType> | undefined {
+export function createNonFungibleAsset(asset: SimpleHash.Asset): NonFungibleAsset<ChainId, SchemaType> | undefined {
+    if (isEmpty(asset)) return
     const chainId = resolveChainId(asset.chain)
     const address = asset.contract_address
-    const schema = asset.contract.type === 'ERC721' ? SchemaType.ERC721 : SchemaType.ERC1155
-    if (!chainId || !isValidChainId(chainId) || !address || asset.collection.spam_score === 100) return
+
+    const spam_score = asset.collection.spam_score
+    if (!chainId || !isValidChainId(chainId) || !address || (spam_score !== null && spam_score >= SPAM_SCORE)) return
+    const schema = ['ERC721', 'CRYPTOPUNKS'].includes(asset.contract.type) ? SchemaType.ERC721 : SchemaType.ERC1155
+    const name = asset.name || getAssetFullName(asset.contract_address, asset.contract.name, asset.name, asset.token_id)
+
     return {
         id: address,
         chainId,
@@ -39,24 +58,37 @@ export function createNonFungibleAsset(asset: Asset): NonFungibleAsset<ChainId, 
         owner: {
             address: asset.owners?.[0].owner_address,
         },
-        priceInToken: asset.last_sale
-            ? {
-                  amount: scale10(asset.last_sale.total_price, WNATIVE[chainId].decimals).toFixed(),
-                  // FIXME: cannot get payment token
-                  token:
-                      asset.last_sale.payment_token?.symbol === 'ETH'
-                          ? chainResolver.nativeCurrency(chainId) ?? WNATIVE[chainId]
-                          : WNATIVE[chainId],
-              }
-            : undefined,
+        priceInToken:
+            asset.last_sale ?
+                {
+                    // eslint-disable-next-line @typescript-eslint/no-base-to-string
+                    amount: asset.last_sale.total_price?.toString() || '',
+                    // FIXME: cannot get payment token
+                    token:
+                        asset.last_sale.payment_token?.symbol === 'ETH' ?
+                            (EVMChainResolver.nativeCurrency(chainId) ?? WNATIVE[chainId])
+                        :   WNATIVE[chainId],
+                }
+            :   undefined,
         metadata: {
             chainId,
-            name: isValidDomain(asset.name)
-                ? asset.name
-                : getAssetFullName(asset.contract_address, asset.contract.name, asset.name, asset.token_id),
+            name,
+            tokenId: asset.token_id,
             symbol: asset.contract.symbol,
             description: asset.description,
-            imageURL: asset.image_url || asset.previews.image_large_url,
+            imageURL: resolveImageURL(
+                asset.image_url || asset.previews.image_large_url,
+                asset.name,
+                asset.collection.name,
+                asset.contract_address,
+            ),
+            previewImageURL: resolveImageURL(
+                asset.previews.image_small_url,
+                asset.name,
+                asset.collection.name,
+                asset.contract_address,
+            ),
+            blurhash: asset.previews.blurhash,
             mediaURL: asset.image_url || asset.previews.image_large_url,
         },
         contract: {
@@ -68,28 +100,35 @@ export function createNonFungibleAsset(asset: Asset): NonFungibleAsset<ChainId, 
         },
         collection: {
             chainId,
-            name: asset.contract.name,
+            name: asset.collection.name || '',
             slug: asset.contract.name,
             description: asset.collection.description,
             address: asset.contract_address,
             iconURL: asset.collection.image_url,
-            verified: Boolean(asset.collection.marketplace_pages.some((x) => x.verified)),
+            verified: Boolean(asset.collection.marketplace_pages?.some((x) => x.verified)),
             createdAt: new Date(asset.created_date).getTime(),
+            floorPrices: asset.collection.floor_prices,
         },
         source: SourceType.SimpleHash,
+        traits:
+            asset.extra_metadata?.attributes.map((x) => ({
+                type: x.trait_type,
+                value: x.value,
+                displayType: x.display_type,
+            })) || [],
     }
 }
 
 export function createNonFungibleCollection(
-    collection: Collection,
-): NonFungibleCollection<ChainId, SchemaType> | undefined {
-    const chainId = resolveChainId(collection.chain)
+    collection: SimpleHash.Collection,
+): NonFungibleCollection<ChainId, SchemaType> {
+    const chainId = resolveChainId(collection.chain)!
 
-    if (!isValidChainId(chainId) || collection.spam_score === 100) return
+    const verifiedMarketplaces = collection.marketplace_pages?.filter((x) => x.verified) || []
     return {
         id: collection.id,
         chainId,
-        name: collection.name,
+        name: collection.name || '',
         slug: collection.name,
         schema: SchemaType.ERC721,
         balance: collection.distinct_nfts_owned,
@@ -97,16 +136,20 @@ export function createNonFungibleCollection(
         ownersTotal: collection.total_quantity,
         source: SourceType.SimpleHash,
         address: collection.top_contracts?.[0]?.split('.')?.[1] ?? '',
+        verified: verifiedMarketplaces.length > 0,
+        verifiedBy: verifiedMarketplaces.map((x) => x.marketplace_name),
     }
 }
 
-export function resolveChainId(chain: string): ChainId | undefined {
+export const resolveChainId: (chain: string) => ChainId | undefined = memoize(function resolveChainId(
+    chain: string,
+): ChainId | undefined {
     // Some of the `chainResolver.chainId()` results do not match.
     switch (chain) {
         case 'ethereum':
             return ChainId.Mainnet
         case 'polygon':
-            return ChainId.Matic
+            return ChainId.Polygon
         case 'arbitrum':
             return ChainId.Arbitrum
         case 'optimism':
@@ -117,28 +160,93 @@ export function resolveChainId(chain: string): ChainId | undefined {
             return ChainId.xDai
         case 'bsc':
             return ChainId.BSC
+        case 'base':
+            return ChainId.Base
+        case 'scroll':
+            return ChainId.Scroll
+        case 'celo':
+            return ChainId.Celo
+        case 'zora':
+            return ChainId.Zora
+        case 'fantom':
+            return ChainId.Fantom
         default:
             return undefined
     }
+})
+
+export const resolveActivityType = (eventType: string) => {
+    const map: Record<string, ActivityType> = {
+        transfer: ActivityType.Transfer,
+        sale: ActivityType.Sale,
+        mint: ActivityType.Mint,
+        list: ActivityType.List,
+    }
+    return map[eventType] || ActivityType.Transfer
 }
 
-export function resolveChain(chainId: ChainId): string | undefined {
-    switch (chainId) {
-        case ChainId.Mainnet:
-            return 'ethereum'
-        case ChainId.Matic:
-            return 'polygon'
-        case ChainId.Arbitrum:
-            return 'arbitrum'
-        case ChainId.Optimism:
-            return 'optimism'
-        case ChainId.Avalanche:
-            return 'avalanche'
-        case ChainId.xDai:
-            return 'gnosis'
-        case ChainId.BSC:
-            return 'bsc'
+const ChainNameMap: Record<NetworkPluginID, Record<number, string>> = {
+    [NetworkPluginID.PLUGIN_EVM]: {
+        [ChainId.Mainnet]: 'ethereum',
+        [ChainId.BSC]: 'bsc',
+        [ChainId.Polygon]: 'polygon',
+        [ChainId.Arbitrum]: 'arbitrum',
+        [ChainId.Optimism]: 'optimism',
+        [ChainId.Avalanche]: 'avalanche',
+        [ChainId.xDai]: 'gnosis',
+        [ChainId.Base]: 'base',
+        [ChainId.Scroll]: 'scroll',
+        [ChainId.Zora]: 'zora',
+        [ChainId.Fantom]: 'fantom',
+    },
+    [NetworkPluginID.PLUGIN_SOLANA]: {
+        [SolanaChainId.Mainnet]: 'solana',
+    },
+    [NetworkPluginID.PLUGIN_FLOW]: {
+        [FlowChainId.Mainnet]: 'flow',
+    },
+}
+
+export function getAllChainNames(pluginID: NetworkPluginID) {
+    return Object.values(ChainNameMap[pluginID]).join(',')
+}
+
+export function resolveChain(pluginId: NetworkPluginID, chainId: Web3Helper.ChainIdAll): string | undefined {
+    return ChainNameMap[pluginId][chainId]
+}
+
+export function checkBlurToken(pluginId: NetworkPluginID, chainId: Web3Helper.ChainIdAll, address: string): boolean {
+    return `${resolveChain(pluginId, chainId)}.${address.toLowerCase()}` === `ethereum.${ETH_BLUR_TOKEN_ADDRESS}`
+}
+
+export function isLensFollower(name: string) {
+    if (!name) return false
+    return name.endsWith('.lens-Follower')
+}
+
+export const resolveSimpleHashRange = createLookupTableResolver<Days, number>(
+    {
+        [Days.ONE_DAY]: 60 * 60 * 24,
+        [Days.ONE_WEEK]: 60 * 60 * 24 * 7,
+        [Days.ONE_MONTH]: 60 * 60 * 24 * 30,
+        [Days.THREE_MONTHS]: 60 * 60 * 24 * 90,
+        [Days.ONE_YEAR]: 0,
+        [Days.MAX]: 0,
+    },
+    () => 0,
+)
+
+export function resolveEventType(event: SimpleHash.ActivityType) {
+    switch (event) {
+        case SimpleHash.ActivityType.Sale:
+            return ActivityType.Sale
+        case SimpleHash.ActivityType.Transfer:
+            return ActivityType.Transfer
+        case SimpleHash.ActivityType.Burn:
+            return ActivityType.Burn
+        case SimpleHash.ActivityType.Mint:
+            return ActivityType.Mint
         default:
-            return undefined
+            unreachable(event)
     }
 }

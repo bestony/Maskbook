@@ -3,18 +3,19 @@ import type { Web3Helper } from '@masknet/web3-helpers'
 import type { NetworkPluginID } from '@masknet/shared-base'
 import { useChainContext } from './useContext.js'
 import { useWeb3State } from './useWeb3State.js'
+import { useWeb3Utils } from './useWeb3Utils.js'
 
 export function useLookupAddress<T extends NetworkPluginID>(
     pluginID?: T,
-    domain?: string,
+    domain?: string | null,
     expectedChainId?: Web3Helper.Definition[T]['ChainId'],
 ) {
     const { chainId } = useChainContext({ chainId: expectedChainId })
-    const { NameService, Others } = useWeb3State(pluginID)
+    const Utils = useWeb3Utils(pluginID)
+    const { NameService } = useWeb3State(pluginID)
 
     return useAsyncRetry(async () => {
-        if (!Others?.chainResolver.isValid(chainId) || !domain || !Others?.isValidDomain?.(domain) || !NameService)
-            return
-        return NameService.lookup?.(chainId, domain)
-    }, [chainId, domain, NameService, Others])
+        if (!domain || !Utils.isValidDomain(domain) || !NameService) return
+        return NameService.lookup?.(domain)
+    }, [chainId, domain, NameService, Utils])
 }

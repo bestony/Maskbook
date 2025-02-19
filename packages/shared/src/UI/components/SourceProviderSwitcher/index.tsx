@@ -19,13 +19,12 @@ const useStyles = makeStyles()((theme) => {
             position: 'absolute',
             left: '16px',
             top: '14px',
-            background: 'white',
             borderRadius: '50%',
         },
     }
 })
 
-export const SourceProviderSwitcher = ({ sources, onSelect, selected }: SourceProviderSwitcherProps) => {
+export function SourceProviderSwitcher({ sources, onSelect, selected }: SourceProviderSwitcherProps) {
     const { classes } = useStyles()
     const _sources = sources ?? sourceList
     const handleClick = (source: SourceType) => {
@@ -45,7 +44,7 @@ export const SourceProviderSwitcher = ({ sources, onSelect, selected }: SourcePr
                         <SourceProviderIcon size={24} provider={x} />
                         {selected === x && (
                             <Stack className={classes.selected}>
-                                <Icons.Success size={12} />
+                                <Icons.BorderedSuccess size={12} />
                             </Stack>
                         )}
                     </Stack>

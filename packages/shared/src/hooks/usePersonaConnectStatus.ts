@@ -1,6 +1,8 @@
-import { useAllPersonas, useLastRecognizedIdentity, useSNSAdaptorContext } from '@masknet/plugin-infra/content-script'
-import type { PersonaInformation } from '@masknet/shared-base'
 import { useMemo } from 'react'
+import type { PersonaInformation } from '@masknet/shared-base'
+import { useAllPersonas, useLastRecognizedIdentity } from '@masknet/plugin-infra/content-script'
+import { connectPersona } from '@masknet/plugin-infra/content-script/context'
+import { createPersona } from '@masknet/plugin-infra/dom/context'
 
 export function usePersonaConnectStatus(): {
     action?: () => void
@@ -9,17 +11,21 @@ export function usePersonaConnectStatus(): {
     currentPersona?: PersonaInformation
 } {
     const personas = useAllPersonas()
-    const lastRecognized = useLastRecognizedIdentity()
-    const { connectPersona, createPersona } = useSNSAdaptorContext()
+    const lastRecognized = useLastRecognizedIdentity()?.identifier
 
     return useMemo(() => {
-        const id = lastRecognized?.identifier
-        const currentPersona = personas.find((x) => id && x.linkedProfiles.some((x) => x.identifier === id))
+        const currentPersona = personas.find(
+            (x) => lastRecognized && x.linkedProfiles.some((x) => x.identifier === lastRecognized),
+        )
         return {
-            action: !personas.length ? createPersona : !currentPersona ? connectPersona : undefined,
+            /** @deprecated */
+            action:
+                !personas.length ? createPersona
+                : !currentPersona ? connectPersona
+                : undefined,
             currentPersona,
             connected: !!currentPersona,
             hasPersona: !!personas.length,
         }
-    }, [personas, lastRecognized?.identifier?.toText(), createPersona, connectPersona])
+    }, [personas, lastRecognized])
 }

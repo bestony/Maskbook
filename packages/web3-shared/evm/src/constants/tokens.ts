@@ -1,7 +1,8 @@
+// cspell:disable
 import type { FungibleToken } from '@masknet/web3-shared-base'
 import { ChainId, type ChainIdOptionalRecord, type SchemaType } from '../types/index.js'
-import { chainResolver } from '../helpers/resolver.js'
 import { createERC20Tokens } from '../helpers/token.js'
+import { CHAIN_DESCRIPTORS } from './descriptors.js'
 
 export type ERC20AgainstToken = Readonly<ChainIdOptionalRecord<Array<FungibleToken<ChainId, SchemaType.ERC20>>>>
 
@@ -41,7 +42,7 @@ export const RUNE = createERC20Tokens('RUNE_ADDRESS', 'RUNE.ETH', 'RUNE', 18)
 export const YFI = createERC20Tokens('YFI_ADDRESS', 'Yearn', 'YFI', 18)
 export const BTCB = createERC20Tokens('BTCB_ADDRESS', 'Binance BTC', 'BTCB', 18)
 export const CAKE = createERC20Tokens('CAKE_ADDRESS', 'PancakeSwap Token', 'CAKE', 18)
-export const maUSDC = createERC20Tokens('maUSDC_ADDRESS', 'Matic Aave interest bearing USDC', 'maUSDC', 6)
+export const maUSDC = createERC20Tokens('maUSDC_ADDRESS', 'Polygon Aave interest bearing USDC', 'maUSDC', 6)
 export const NFTX = createERC20Tokens('NFTX_ADDRESS', 'NFTX', 'NFTX', 18)
 export const STETH = createERC20Tokens('stETH_ADDRESS', 'stakedETH', 'stETH', 18)
 export const CUSD = createERC20Tokens('cUSD_ADDRESS', 'Celo Dollar', 'cUSD', 18)
@@ -57,10 +58,14 @@ export const xYUMI = createERC20Tokens('xYUMI_ADDRESS', 'Yumi Staking Token', 'x
 export const OP = createERC20Tokens('OP_ADDRESS', 'Optimism', 'OP', 18)
 export const RARI = createERC20Tokens('RARI_ADDRESS', 'Rarible', 'RARI', 18)
 
+const getNativeCurrency = (chainId: ChainId) => {
+    return CHAIN_DESCRIPTORS.find((x) => x.chainId === chainId)?.nativeCurrency
+}
+
 export const WNATIVE = createERC20Tokens(
     'WNATIVE_ADDRESS',
-    (chainId) => `Wrapped ${chainResolver?.nativeCurrency(chainId)?.name ?? 'Ether'}`,
-    (chainId) => `W${chainResolver?.nativeCurrency(chainId)?.symbol ?? 'ETH'}`,
+    (chainId) => `Wrapped ${getNativeCurrency(chainId)?.name ?? 'Ether'}`,
+    (chainId) => `W${getNativeCurrency(chainId)?.symbol ?? 'ETH'}`,
     18,
 )
 
@@ -72,7 +77,7 @@ export const WNATIVE_ONLY: ERC20AgainstToken = {
     [ChainId.Gorli]: [WNATIVE[ChainId.Gorli]],
     [ChainId.BSC]: [WNATIVE[ChainId.BSC]],
     [ChainId.BSCT]: [WNATIVE[ChainId.BSCT]],
-    [ChainId.Matic]: [WNATIVE[ChainId.Matic]],
+    [ChainId.Polygon]: [WNATIVE[ChainId.Polygon]],
     [ChainId.Mumbai]: [WNATIVE[ChainId.Mumbai]],
     [ChainId.Arbitrum]: [WNATIVE[ChainId.Arbitrum]],
     [ChainId.Arbitrum_Rinkeby]: [WNATIVE[ChainId.Arbitrum_Rinkeby]],
@@ -86,4 +91,7 @@ export const WNATIVE_ONLY: ERC20AgainstToken = {
     [ChainId.Optimism]: [WNATIVE[ChainId.Optimism]],
     [ChainId.Optimism_Goerli]: [WNATIVE[ChainId.Optimism_Goerli]],
     [ChainId.Astar]: [WNATIVE[ChainId.Astar]],
+    [ChainId.Scroll]: [WNATIVE[ChainId.Scroll]],
+    [ChainId.XLayer]: [WNATIVE[ChainId.XLayer]],
+    [ChainId.XLayer_Testnet]: [WNATIVE[ChainId.XLayer_Testnet]],
 }

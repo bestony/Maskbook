@@ -1,194 +1,23 @@
 import urlcat from 'urlcat'
-import { NetworkPluginID, createLookupTableResolver, NextIDPlatform, SocialAddressType } from '@masknet/shared-base'
 import {
-    type ChainDescriptor,
-    CurrencyType,
-    type NetworkDescriptor,
-    type ProviderDescriptor,
-    SourceType,
-} from '../specs/index.js'
-
-export interface ExplorerRoutes {
-    addressPathname?: string
-    blockPathname?: string
-    transactionPathname?: string
-    domainPathname?: string
-    fungibleTokenPathname?: string
-    nonFungibleTokenPathname?: string
-}
-
-// A workaround for extracting un-exported internal types.
-// Learn more https://stackoverflow.com/questions/50321419/typescript-returntype-of-generic-function
-export class Wrapper<ChainId, SchemaType, ProviderType, NetworkType> {
-    createChainResolver(descriptors: Array<ChainDescriptor<ChainId, SchemaType, NetworkType>>) {
-        return createChainResolver(descriptors)
-    }
-    createExplorerResolver(
-        descriptors: Array<ChainDescriptor<ChainId, SchemaType, NetworkType>>,
-        routes?: ExplorerRoutes,
-    ) {
-        return createExplorerResolver(descriptors, routes)
-    }
-    createNetworkResolver(descriptors: Array<NetworkDescriptor<ChainId, NetworkType>>) {
-        return createNetworkResolver(descriptors)
-    }
-    createProviderResolver(descriptors: Array<ProviderDescriptor<ChainId, ProviderType>>) {
-        return createProviderResolver(descriptors)
-    }
-}
-
-export type ReturnChainResolver<ChainId, SchemaType, NetworkType> = ReturnType<
-    Wrapper<ChainId, SchemaType, never, NetworkType>['createChainResolver']
->
-export type ReturnExplorerResolver<ChainId, SchemaType, NetworkType> = ReturnType<
-    Wrapper<ChainId, SchemaType, never, NetworkType>['createExplorerResolver']
->
-export type ReturnNetworkResolver<ChainId, NetworkType> = ReturnType<
-    Wrapper<ChainId, never, never, NetworkType>['createNetworkResolver']
->
-export type ReturnProviderResolver<ChainId, ProviderType> = ReturnType<
-    Wrapper<ChainId, never, ProviderType, never>['createProviderResolver']
->
-
-export function createChainResolver<ChainId, SchemaType, NetworkType>(
-    descriptors: Array<ChainDescriptor<ChainId, SchemaType, NetworkType>>,
-) {
-    const getChainDescriptor = (chainId?: ChainId) => descriptors.find((x) => x.chainId === chainId)
-
-    return {
-        chainId: (name?: string) =>
-            name
-                ? descriptors.find((x) =>
-                      [x.name, x.type as string, x.fullName, x.shortName]
-                          .map((x) => x?.toLowerCase())
-                          .filter(Boolean)
-                          .includes(name?.toLowerCase()),
-                  )?.chainId
-                : undefined,
-        coinMarketCapChainId: (chainId?: ChainId) => getChainDescriptor(chainId)?.coinMarketCapChainId,
-        coinGeckoChainId: (chainId?: ChainId) => getChainDescriptor(chainId)?.coinGeckoChainId,
-        coinGeckoPlatformId: (chainId?: ChainId) => getChainDescriptor(chainId)?.coinGeckoPlatformId,
-        chainName: (chainId?: ChainId) => {
-            const descriptor = getChainDescriptor(chainId)
-            return descriptor?.name === 'BNB Chain' ? 'BNB' : descriptor?.name
-        },
-        chainFullName: (chainId?: ChainId) => getChainDescriptor(chainId)?.fullName,
-        chainShortName: (chainId?: ChainId) => getChainDescriptor(chainId)?.shortName,
-        chainColor: (chainId?: ChainId) => getChainDescriptor(chainId)?.color,
-        chainPrefix: (chainId?: ChainId) => 'ETH:',
-        networkType: (chainId?: ChainId) => getChainDescriptor(chainId)?.type,
-        explorerURL: (chainId?: ChainId) => getChainDescriptor(chainId)?.explorerURL,
-        nativeCurrency: (chainId?: ChainId) => getChainDescriptor(chainId)?.nativeCurrency,
-        isValid: (chainId?: ChainId, testnet = false) =>
-            getChainDescriptor(chainId) && (getChainDescriptor(chainId)?.network === 'mainnet' || testnet),
-        isMainnet: (chainId?: ChainId) => getChainDescriptor(chainId)?.network === 'mainnet',
-        isSupport: (chainId?: ChainId, feature?: string) =>
-            !!(feature && getChainDescriptor(chainId)?.features?.includes(feature)),
-    }
-}
-
-export function createExplorerResolver<ChainId, SchemaType, NetworkType>(
-    descriptors: Array<ChainDescriptor<ChainId, SchemaType, NetworkType>>,
-    {
-        addressPathname = '/address/:address',
-        blockPathname = '/block/:blockNumber',
-        transactionPathname = '/tx/:id',
-        domainPathname = '/address/:domain',
-        fungibleTokenPathname = '/address/:address',
-        nonFungibleTokenPathname = '/nft/:address/:tokenId',
-    }: ExplorerRoutes = {},
-) {
-    const getExplorerURL = (chainId: ChainId) => {
-        const chainDescriptor = descriptors.find((x) => x.chainId === chainId)
-        return chainDescriptor?.explorerURL ?? { url: '' }
-    }
-
-    return {
-        explorerURL: getExplorerURL,
-        addressLink: (chainId: ChainId, address: string, tokenId?: string) => {
-            const explorerURL = getExplorerURL(chainId)
-            if (!explorerURL.url) return ''
-            return urlcat(explorerURL.url, addressPathname, {
-                address,
-                ...explorerURL?.parameters,
-            })
-        },
-        blockLink: (chainId: ChainId, blockNumber: number) => {
-            const explorerURL = getExplorerURL(chainId)
-            if (!explorerURL.url) return ''
-
-            return urlcat(explorerURL.url, blockPathname, {
-                blockNumber,
-                ...explorerURL?.parameters,
-            })
-        },
-        transactionLink: (chainId: ChainId, id: string) => {
-            const explorerURL = getExplorerURL(chainId)
-            if (!explorerURL.url) return ''
-
-            return urlcat(explorerURL.url, transactionPathname, {
-                id,
-                ...explorerURL?.parameters,
-            })
-        },
-        domainLink: (chainId: ChainId, domain: string) => {
-            const explorerURL = getExplorerURL(chainId)
-            if (!explorerURL.url) return ''
-            return urlcat(explorerURL.url, domainPathname, {
-                domain,
-                ...explorerURL?.parameters,
-            })
-        },
-        fungibleTokenLink: (chainId: ChainId, address: string) => {
-            const explorerURL = getExplorerURL(chainId)
-            if (!address || !explorerURL.url) return ''
-            return urlcat(explorerURL.url, fungibleTokenPathname, {
-                address,
-                ...explorerURL?.parameters,
-            })
-        },
-        nonFungibleTokenLink: (chainId: ChainId, address: string, tokenId: string) => {
-            const explorerURL = getExplorerURL(chainId)
-            if (!explorerURL.url) return ''
-            return urlcat(explorerURL.url, nonFungibleTokenPathname, {
-                address,
-                tokenId,
-                ...explorerURL?.parameters,
-            })
-        },
-    }
-}
-
-export function createNetworkResolver<ChainId, NetworkType>(
-    descriptors: Array<NetworkDescriptor<ChainId, NetworkType>>,
-) {
-    const getNetworkDescriptor = (networkType: NetworkType) => descriptors.find((x) => x.type === networkType)
-    return {
-        networkIcon: (networkType: NetworkType) => getNetworkDescriptor(networkType)?.icon,
-        networkIconColor: (networkType: NetworkType) => getNetworkDescriptor(networkType)?.iconColor,
-        networkName: (networkType: NetworkType) => getNetworkDescriptor(networkType)?.name,
-        networkChainId: (networkType: NetworkType) => getNetworkDescriptor(networkType)?.chainId,
-    }
-}
-
-export function createProviderResolver<ChainId, ProviderType>(
-    descriptors: Array<ProviderDescriptor<ChainId, ProviderType>>,
-) {
-    const getProviderDescriptor = (providerType: ProviderType) => descriptors.find((x) => x.type === providerType)
-    return {
-        providerName: (providerType: ProviderType) => getProviderDescriptor(providerType)?.name,
-        providerHomeLink: (providerType: ProviderType) => getProviderDescriptor(providerType)?.homeLink,
-        providerShortenLink: (providerType: ProviderType) => getProviderDescriptor(providerType)?.shortenLink,
-        providerDownloadLink: (providerType: ProviderType) => getProviderDescriptor(providerType)?.downloadLink,
-    }
-}
+    NetworkPluginID,
+    createLookupTableResolver,
+    NextIDPlatform,
+    SocialAddressType,
+    twitterDomainMigrate,
+} from '@masknet/shared-base'
+import { CurrencyType, SourceType } from '../specs/index.js'
+import { memoize } from 'lodash-es'
 
 export const resolveSocialAddressLink = createLookupTableResolver<SocialAddressType, string>(
     {
         [SocialAddressType.Address]: '',
+        [SocialAddressType.ARBID]: 'https://arb.id/',
         [SocialAddressType.ENS]: 'https://ens.domains/',
         [SocialAddressType.SPACE_ID]: 'https://space.id/',
         [SocialAddressType.RSS3]: 'https://rss3.bio/',
+        [SocialAddressType.Crossbell]: 'https://crossbell.io/',
+        [SocialAddressType.Firefly]: '',
         [SocialAddressType.SOL]: 'https://naming.bonfida.org/',
         [SocialAddressType.NEXT_ID]: 'https://next.id/',
         [SocialAddressType.CyberConnect]: 'https://cyberconnect.me/',
@@ -197,6 +26,7 @@ export const resolveSocialAddressLink = createLookupTableResolver<SocialAddressT
         [SocialAddressType.TwitterBlue]: '',
         [SocialAddressType.Mask]: '',
         [SocialAddressType.Lens]: '',
+        [SocialAddressType.OpenSea]: '',
     },
     () => '',
 )
@@ -206,7 +36,6 @@ export const resolveSourceTypeName = createLookupTableResolver<SourceType, strin
         [SourceType.DeBank]: 'DeBank',
         [SourceType.Zerion]: 'Zerion',
         [SourceType.RSS3]: 'RSS3',
-        [SourceType.CoinMarketCap]: 'CoinMarketCap',
         [SourceType.UniswapInfo]: 'UniswapInfo',
         [SourceType.OpenSea]: 'OpenSea',
         [SourceType.Rarible]: 'Rarible',
@@ -237,6 +66,7 @@ export const resolveSourceTypeName = createLookupTableResolver<SourceType, strin
         [SourceType.Etherscan]: 'Etherscan',
         [SourceType.CryptoPunks]: 'CryptoPunks',
         [SourceType.SimpleHash]: 'SimpleHash',
+        [SourceType.Approval]: 'Approval',
     },
     (providerType) => {
         throw new Error(`Unknown source type: ${providerType}.`)
@@ -246,8 +76,28 @@ export const resolveSourceTypeName = createLookupTableResolver<SourceType, strin
 export const resolveCurrencyName = createLookupTableResolver<CurrencyType, string>(
     {
         [CurrencyType.BTC]: 'BTC',
+        [CurrencyType.ETH]: 'ETH',
         [CurrencyType.NATIVE]: 'ETH',
         [CurrencyType.USD]: 'USD',
+        [CurrencyType.CNY]: 'CNY',
+        [CurrencyType.JPY]: 'JPY',
+        [CurrencyType.HKD]: 'HKD',
+        [CurrencyType.EUR]: 'EUR',
+    },
+    (CurrencyType) => {
+        throw new Error(`Unknown currency type: ${CurrencyType}.`)
+    },
+)
+export const resolveCurrencyFullName = createLookupTableResolver<CurrencyType, string>(
+    {
+        [CurrencyType.BTC]: 'Bitcoin',
+        [CurrencyType.ETH]: 'Ethereum',
+        [CurrencyType.NATIVE]: 'Ethereum',
+        [CurrencyType.USD]: 'United States Dollar',
+        [CurrencyType.CNY]: 'Chinese Yuan',
+        [CurrencyType.JPY]: 'Japanese Yen',
+        [CurrencyType.HKD]: 'Hong Kong Dollar',
+        [CurrencyType.EUR]: 'Euro',
     },
     (CurrencyType) => {
         throw new Error(`Unknown currency type: ${CurrencyType}.`)
@@ -256,14 +106,22 @@ export const resolveCurrencyName = createLookupTableResolver<CurrencyType, strin
 
 export const resolveNetworkWalletName = createLookupTableResolver<NetworkPluginID, string>(
     {
-        [NetworkPluginID.PLUGIN_EVM]: 'Ethereum wallet',
-        [NetworkPluginID.PLUGIN_SOLANA]: 'Solana wallet',
-        [NetworkPluginID.PLUGIN_FLOW]: 'Flow wallet',
+        [NetworkPluginID.PLUGIN_EVM]: 'ETH Wallet',
+        [NetworkPluginID.PLUGIN_SOLANA]: 'Solana Wallet',
+        [NetworkPluginID.PLUGIN_FLOW]: 'Flow Wallet',
     },
     (network) => {
         throw new Error(`Unknown network plugin-id: ${network}`)
     },
 )
+
+export const resolveNextIDPlatformWalletName: (platform: NextIDPlatform) => string = memoize(function (
+    platform: NextIDPlatform,
+) {
+    const pluginId = resolveNextID_NetworkPluginID(platform)
+    if (!pluginId) return `${platform} wallet`
+    return resolveNetworkWalletName(pluginId)
+})
 
 export const resolveNextID_NetworkPluginID = createLookupTableResolver<NextIDPlatform, NetworkPluginID | undefined>(
     {
@@ -281,6 +139,8 @@ export const resolveNextID_NetworkPluginID = createLookupTableResolver<NextIDPla
         [NextIDPlatform.SpaceId]: NetworkPluginID.PLUGIN_EVM,
         [NextIDPlatform.Farcaster]: undefined,
         [NextIDPlatform.Bit]: undefined,
+        [NextIDPlatform.Unstoppable]: undefined,
+        [NextIDPlatform.CyberConnect]: undefined,
     },
     () => {
         return undefined
@@ -300,9 +160,11 @@ export const resolveNextIDPlatformName = createLookupTableResolver<NextIDPlatfor
         [NextIDPlatform.REDDIT]: 'Reddit',
         [NextIDPlatform.SYBIL]: 'Sybil',
         [NextIDPlatform.EthLeaderboard]: 'EthLeaderboard',
-        [NextIDPlatform.SpaceId]: 'SpaceId',
+        [NextIDPlatform.SpaceId]: 'Space ID',
         [NextIDPlatform.Farcaster]: 'Farcaster',
-        [NextIDPlatform.Bit]: 'Bit',
+        [NextIDPlatform.Bit]: '.bit',
+        [NextIDPlatform.Unstoppable]: 'Unstoppable Domains',
+        [NextIDPlatform.CyberConnect]: 'CyberConnect',
     },
     () => {
         return ''
@@ -320,13 +182,13 @@ export const resolveNextIDPlatformLink = (networkPlatform: NextIDPlatform, ident
         case NextIDPlatform.Keybase:
             return `https://keybase.io/${name}`
         case NextIDPlatform.Twitter:
-            return `https://twitter.com/${identifier}`
+            return twitterDomainMigrate(`https://x.com/${identifier}`)
         case NextIDPlatform.ENS:
             return `https://app.ens.domains/name/${identifier}`
         case NextIDPlatform.RSS3:
             return `https://rss3.io/result?search=${identifier}`
         case NextIDPlatform.LENS:
-            return `https://www.lensfrens.xyz/${identifier}`
+            return `https://firefly.mask.social/profile/lens/${identifier}`
         case NextIDPlatform.REDDIT:
             return `https://www.reddit.com/user/${identifier}`
         case NextIDPlatform.SYBIL:
@@ -336,9 +198,11 @@ export const resolveNextIDPlatformLink = (networkPlatform: NextIDPlatform, ident
         case NextIDPlatform.SpaceId:
             return `https://bscscan.com/address/${identifier}`
         case NextIDPlatform.Farcaster:
-            return `https://warpcast.com/${identifier}`
+            return `https://firefly.mask.social/profile/farcaster/${identifier}`
         case NextIDPlatform.Bit:
             return `https://bit.cc/${name}`
+        case NextIDPlatform.Unstoppable:
+            return `https://ud.me/${name}`
         default:
             return ''
     }
@@ -347,32 +211,32 @@ export const resolveNextIDPlatformLink = (networkPlatform: NextIDPlatform, ident
 // https://stackoverflow.com/a/67176726
 const MATCH_IPFS_CID_RAW =
     'Qm[1-9A-HJ-NP-Za-km-z]{44,}|b[2-7A-Za-z]{58,}|B[2-7A-Z]{58,}|z[1-9A-HJ-NP-Za-km-z]{48,}|F[\\dA-F]{50,}'
-const MATCH_IPFS_DATA_RE = /ipfs\/(data:.*)$/
+const MATCH_IPFS_DATA_RE = /ipfs\/(data:[\w,/;]+)$/
 const MATCH_IPFS_CID_RE = new RegExp(`(${MATCH_IPFS_CID_RAW})`)
 const MATCH_IPFS_CID_STRICT_RE = new RegExp(`^(?:${MATCH_IPFS_CID_RAW})$`)
 const MATCH_IPFS_CID_AT_STARTS_RE = new RegExp(`^https://(?:${MATCH_IPFS_CID_RAW})`)
 const MATCH_IPFS_CID_AND_PATHNAME_RE = new RegExp(`(?:${MATCH_IPFS_CID_RAW})\\/?.*`)
 const MATCH_LOCAL_RESOURCE_URL_RE = /^(data|blob:|\w+-extension:\/\/|<svg\s)/
-const CORS_HOST = 'https://cors.r2d2.to'
-const IPFS_GATEWAY_HOST = 'https://gateway.ipfscdn.io'
+const CORS_HOST = 'https://cors-next.r2d2.to'
+const IPFS_GATEWAY_HOST = 'https://ipfs.io'
 
-export const isIPFS_CID = (cid: string) => {
+export function isIPFS_CID(cid: string) {
     return MATCH_IPFS_CID_STRICT_RE.test(cid)
 }
 
-export const isIPFS_Resource = (str: string) => {
+export function isIPFS_Resource(str: string) {
     return MATCH_IPFS_CID_RE.test(str)
 }
 
-export const isArweaveResource = (str: string) => {
+export function isArweaveResource(str: string) {
     return str.startsWith('ar:')
 }
 
-export const isLocaleResource = (url: string): boolean => {
+export function isLocaleResource(url: string) {
     return MATCH_LOCAL_RESOURCE_URL_RE.test(url)
 }
 
-export const resolveLocalURL = (url: string): string => {
+export function resolveLocalURL(url: string) {
     if (url.startsWith('<svg ')) return `data:image/svg+xml;base64,${btoa(url)}`
     return url
 }
@@ -384,11 +248,12 @@ export const resolveLocalURL = (url: string): string => {
  * are set to two different NFTs, but according to the same CID,
  * they are exactly the same.
  */
-const trimQuery = (url: string) => {
-    return url.replace(/\?.+$/, '')
+export function trimQuery(url: string) {
+    const indexOf = url.indexOf('?')
+    return url.slice(0, Math.max(0, indexOf === -1 ? url.length : indexOf))
 }
 
-export const resolveIPFS_CID = (str: string) => {
+export function resolveIPFS_CID(str: string) {
     return str.match(MATCH_IPFS_CID_RE)?.[1]
 }
 
@@ -449,8 +314,8 @@ export function resolveIPFS_URL(cidOrURL: string | undefined): string | undefine
     return cidOrURL
 }
 
-export function resolveArweaveURL(url: string | undefined) {
-    if (!url) return
+export function resolveArweaveURL<T extends string | undefined>(url: T) {
+    if (!url) return url
     if (url.startsWith('https://')) return url
     return urlcat('https://arweave.net/:str', { str: url })
 }
@@ -459,14 +324,14 @@ export function resolveArweaveURL(url: string | undefined) {
  * Please do not use to resolve an image or an video resource, because that's
  * not allowed by the cors agent server
  */
-export function resolveCrossOriginURL(url: string | undefined) {
-    if (!url) return
+export function resolveCrossOriginURL<T extends string | undefined>(url: T) {
+    if (!url) return url
     if (isLocaleResource(url)) return url
     if (url.startsWith(CORS_HOST)) return url
     return `${CORS_HOST}?${encodeURIComponent(url)}`
 }
 
-export function resolveResourceURL(url: string | undefined) {
+export function resolveResourceURL<T extends string | undefined>(url: T) {
     if (!url) return url
     if (isLocaleResource(url)) return resolveLocalURL(url)
     if (isArweaveResource(url)) return resolveArweaveURL(url)

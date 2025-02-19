@@ -2,13 +2,14 @@ import { useState, useMemo, useEffect } from 'react'
 import { Controller, FormProvider, useForm } from 'react-hook-form'
 import { makeStyles, MaskTextField, MaskAlert } from '@masknet/theme'
 import { Icons } from '@masknet/icons'
-import { useSharedI18N } from '@masknet/shared'
 import { Box, Paper } from '@mui/material'
 import { isZero } from '@masknet/web3-shared-base'
+import { NUMERIC_INPUT_REGEXP_PATTERN } from '@masknet/shared-base'
 import type { z as zod } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { RadioChip } from './RadioChip.js'
 import { useSlippageToleranceSchema } from './hooks/index.js'
+import { Trans, useLingui } from '@lingui/react/macro'
 
 const useStyles = makeStyles()((theme) => {
     return {
@@ -28,15 +29,15 @@ const useStyles = makeStyles()((theme) => {
     }
 })
 
-export interface SlippageToleranceFormProps {
+interface SlippageToleranceFormProps {
     slippageTolerance: number
     slippageTolerances: number[]
     onChange?: (data?: zod.infer<ReturnType<typeof useSlippageToleranceSchema>>) => void
 }
 
 export function SlippageToleranceForm(props: SlippageToleranceFormProps) {
+    const { t } = useLingui()
     const { slippageTolerance, slippageTolerances, onChange } = props
-    const t = useSharedI18N()
     const { classes } = useStyles()
 
     const schema = useSlippageToleranceSchema()
@@ -86,12 +87,12 @@ export function SlippageToleranceForm(props: SlippageToleranceFormProps) {
                         render={({ field }) => (
                             <MaskTextField
                                 {...field}
-                                placeholder={t.gas_settings_custom()}
+                                placeholder={t`Custom`}
                                 InputProps={{
                                     type: 'number',
-                                }}
-                                inputProps={{
-                                    pattern: '^[0-9]*[.,]?[0-9]*$',
+                                    inputProps: {
+                                        pattern: NUMERIC_INPUT_REGEXP_PATTERN,
+                                    },
                                 }}
                                 value={customSlippageTolerance}
                                 error={!!methods.formState.errors.customSlippageTolerance?.message}
@@ -113,21 +114,24 @@ export function SlippageToleranceForm(props: SlippageToleranceFormProps) {
                     />
                 </Box>
             </Paper>
-            {error ? (
+            {error ?
                 <MaskAlert icon={<Icons.Warning />} severity="error">
                     {error}
                 </MaskAlert>
-            ) : tolerance < slippageTolerances[0] ? (
+            : tolerance < slippageTolerances[0] ?
                 <MaskAlert icon={<Icons.WarningTriangle color="warning" />} severity="warning">
-                    {t.gas_settings_alert_low_slippage_tolerance()}
+                    <Trans>
+                        Transaction with extremely low slippage tolerance might be reverted because of very small market
+                        movement.
+                    </Trans>
                 </MaskAlert>
-            ) : tolerance > slippageTolerances[slippageTolerances.length - 1] ? (
+            : tolerance > slippageTolerances.at(-1)! ?
                 <MaskAlert icon={<Icons.Warning />} severity="error">
-                    {t.gas_settings_alert_high_slippage_tolerance({
-                        percentage: tolerance.toString(),
-                    })}
+                    <Trans>
+                        You may have {tolerance.toString()}% less received with this level of slippage tolerance.
+                    </Trans>
                 </MaskAlert>
-            ) : null}
+            :   null}
         </FormProvider>
     )
 }

@@ -1,25 +1,22 @@
 import urlcat from 'urlcat'
 import { compact } from 'lodash-es'
-import { RSS3API } from '../RSS3/index.js'
 import { MASK_X_DEFAULT_PAGINATION, MASK_X_ROOT_URL } from './constants.js'
-import { MaskX_BaseAPI } from '../entry-types.js'
-import { fetchJSON } from '../entry-helpers.js'
+import { BaseMaskX } from '../entry-types.js'
+import { fetchCachedJSON } from '../helpers/fetchJSON.js'
 
-export class MaskX_API implements MaskX_BaseAPI.Provider {
-    private RSS3 = new RSS3API()
+function fetchFromMaskX(pathname: string) {
+    return fetchCachedJSON<BaseMaskX.Response>(urlcat(MASK_X_ROOT_URL, pathname))
+}
 
-    private async fetchFromMaskX(pathname: string) {
-        return fetchJSON<MaskX_BaseAPI.Response>(urlcat(MASK_X_ROOT_URL, pathname))
-    }
-
-    private getOptions({ size = 20, page = 1 }: MaskX_BaseAPI.Options = MASK_X_DEFAULT_PAGINATION) {
+export class MaskX {
+    private static getOptions({ size = 20, page = 1 }: BaseMaskX.Options = MASK_X_DEFAULT_PAGINATION) {
         return {
             size,
             page,
         }
     }
 
-    private async getRNSIdentity(identity: MaskX_BaseAPI.Identity) {
+    private static async getRNSIdentity(identity: BaseMaskX.Identity) {
         const handle = identity.sns_handle.toLowerCase()
         if (handle.endsWith('.rss3')) {
             return {
@@ -28,33 +25,17 @@ export class MaskX_API implements MaskX_BaseAPI.Provider {
             }
         }
 
-        try {
-            const nameInfo = await this.RSS3.getNameInfo(handle)
-            if (!nameInfo?.rnsName) throw new Error('Failed to fetch RNS name.')
-
-            return {
-                ...identity,
-                sns_handle: nameInfo.rnsName,
-            }
-        } catch (error) {
-            return {
-                ...identity,
-                sns_handle: identity.web3_addr,
-            }
-        }
+        return identity
     }
 
-    private async getResponse(response: MaskX_BaseAPI.Response) {
+    private static async getResponse(response: BaseMaskX.Response) {
         const allSettled = await Promise.allSettled(
             response.records.map(async (x) => {
                 switch (x.source) {
-                    case MaskX_BaseAPI.SourceType.RSS3:
+                    case BaseMaskX.SourceType.RSS3:
                         return this.getRNSIdentity(x)
                     default:
-                        return {
-                            ...x,
-                            sns_handle: x.web3_addr,
-                        }
+                        return x
                 }
             }),
         )
@@ -65,13 +46,13 @@ export class MaskX_API implements MaskX_BaseAPI.Provider {
         }
     }
 
-    async getIdentitiesExact(
+    static async getIdentitiesExact(
         handle: string,
-        platform: MaskX_BaseAPI.PlatformType,
-        initial: MaskX_BaseAPI.Options = { size: 20, page: 1 },
-    ): Promise<MaskX_BaseAPI.Response> {
-        const response = await this.fetchFromMaskX(
-            urlcat('/v1/identity', {
+        platform: BaseMaskX.PlatformType,
+        initial: BaseMaskX.Options = { size: 20, page: 1 },
+    ): Promise<BaseMaskX.Response> {
+        const response = await fetchFromMaskX(
+            urlcat('/prod/identity', {
                 identity: handle,
                 platform,
                 ...this.getOptions(initial),
@@ -79,13 +60,14 @@ export class MaskX_API implements MaskX_BaseAPI.Provider {
         )
         return this.getResponse(response)
     }
-    async getIdentitiesFuzzy(
+
+    static async getIdentitiesFuzzy(
         handle: string,
-        platform: MaskX_BaseAPI.PlatformType,
-        initial: MaskX_BaseAPI.Options = { size: 20, page: 1 },
-    ): Promise<MaskX_BaseAPI.Response> {
-        const response = await this.fetchFromMaskX(
-            urlcat('/v1/identity/search', {
+        platform: BaseMaskX.PlatformType,
+        initial: BaseMaskX.Options = { size: 20, page: 1 },
+    ): Promise<BaseMaskX.Response> {
+        const response = await fetchFromMaskX(
+            urlcat('/prod/identity/search', {
                 identity: handle,
                 platform,
                 ...this.getOptions(initial),
@@ -93,8 +75,9 @@ export class MaskX_API implements MaskX_BaseAPI.Provider {
         )
         return this.getResponse(response)
     }
-    async getAllIdentities(initial: MaskX_BaseAPI.Options = { size: 20, page: 1 }): Promise<MaskX_BaseAPI.Response> {
-        const response = await this.fetchFromMaskX(urlcat('/v1/identity/all', this.getOptions(initial)))
+
+    static async getAllIdentities(initial: BaseMaskX.Options = { size: 20, page: 1 }): Promise<BaseMaskX.Response> {
+        const response = await fetchFromMaskX(urlcat('/prod/identity/all', this.getOptions(initial)))
         return this.getResponse(response)
     }
 }

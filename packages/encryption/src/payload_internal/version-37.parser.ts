@@ -3,7 +3,7 @@ import type { PayloadParseResult } from '../payload/index.js'
 import { CryptoException, PayloadException, assertArray, assertUint8Array } from '../types/index.js'
 import { andThenAsync, CheckedError, decompressK256Raw, OptionalResult } from '@masknet/base'
 import { Ok, type Result } from 'ts-results-es'
-import { type EC_Key, EC_KeyCurveEnum } from '../payload/types.js'
+import { type EC_Key, EC_KeyCurve } from '../payload/types.js'
 import { decodeMessagePackF, assertIVLengthEq16, importAES, importEC_Key } from '../utils/index.js'
 import { safeUnreachable } from '@masknet/kit'
 import { parseSignatureContainer } from './SignatureContainer.js'
@@ -17,8 +17,8 @@ const importAES256 = CheckedError.withErr(importAES, CryptoException.InvalidCryp
 const importEC = CheckedError.withErr(importEC_Key, CryptoException.InvalidCryptoKey)
 export async function parse37(input: Uint8Array): PayloadParserResult {
     const signatureContainer = parseSignatureContainer(input)
-    if (signatureContainer.err) return signatureContainer
-    const { payload, signature } = signatureContainer.val
+    if (signatureContainer.isErr()) return signatureContainer
+    const { payload, signature } = signatureContainer.value
     return parsePayload37(payload, signature)
 }
 
@@ -32,11 +32,12 @@ function parsePayload37(payload: Uint8Array, signature: PayloadParseResult.Paylo
         const normalized: PayloadParseResult.Payload = {
             version: -37,
             author: parseAuthor(authorNetwork, authorID),
-            authorPublicKey: authorPublicKey
-                ? OptionalResult.fromResult(
-                      await importAsymmetryKey(authorPublicKeyAlg, authorPublicKey, 'authorPublicKey'),
-                  )
-                : OptionalResult.None,
+            authorPublicKey:
+                authorPublicKey ?
+                    OptionalResult.fromResult(
+                        await importAsymmetryKey(authorPublicKeyAlg, authorPublicKey, 'authorPublicKey'),
+                    )
+                :   OptionalResult.None,
             encryption: await parseEncryption(encryption),
             encrypted: assertUint8Array(data, 'encrypted', PayloadException.InvalidPayload),
             signature,
@@ -93,13 +94,13 @@ function importAsymmetryKey(algr: unknown, key: unknown, name: string) {
     type T = Promise<Result<EC_Key, CheckedError<CryptoException>>>
     return andThenAsync(assertUint8Array(key, name, CryptoException.InvalidCryptoKey), async (pubKey): T => {
         if (typeof algr === 'number') {
-            if (algr in EC_KeyCurveEnum) {
-                if (algr === EC_KeyCurveEnum.secp256k1) {
+            if (algr in EC_KeyCurve) {
+                if (algr === EC_KeyCurve.secp256k1) {
                     pubKey = await decompressK256Raw(pubKey)
                 }
                 const key = await importEC(pubKey, algr)
-                if (key.err) return key
-                return Ok<EC_Key>({ algr, key: key.val })
+                if (key.isErr()) return key
+                return Ok<EC_Key>({ algr, key: key.value })
             }
         }
         return new CheckedError(CryptoException.UnsupportedAlgorithm, null).toErr()

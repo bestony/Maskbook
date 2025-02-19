@@ -1,7 +1,61 @@
+// cspell:disable
 export enum DebankTransactionDirection {
     SEND = 'send',
     RECEIVE = 'receive',
 }
+
+/**
+ * Collect from https://docs.cloud.debank.com/en/readme/api-pro-reference/chain#returns-1
+ * To get the full list: `curl https://debank-proxy.r2d2.to/v1/chain/list | jq ".[].id"`
+ */
+export type DebankChains =
+    | 'arb'
+    | 'astar'
+    | 'aurora'
+    | 'avax'
+    | 'base'
+    | 'boba'
+    | 'sei'
+    | 'brise'
+    | 'bsc'
+    | 'btt'
+    | 'canto'
+    | 'celo'
+    | 'cfx'
+    | 'cro'
+    | 'dfk'
+    | 'doge'
+    | 'eth'
+    | 'evmos'
+    | 'ftm'
+    | 'fuse'
+    | 'heco'
+    | 'hmy'
+    | 'iotx'
+    | 'kava'
+    | 'kcc'
+    | 'klay'
+    | 'mada'
+    | 'matic'
+    | 'metis'
+    | 'mobm'
+    | 'movr'
+    | 'nova'
+    | 'okt'
+    | 'op'
+    | 'palm'
+    | 'pls'
+    | 'rsk'
+    | 'sbch'
+    | 'scrl'
+    | 'sdn'
+    | 'sgb'
+    | 'step'
+    | 'swm'
+    | 'tlos'
+    | 'wan'
+    | 'xdai'
+    | 'xlayer'
 
 export interface DictItem {
     name: string
@@ -19,6 +73,7 @@ export interface ProjectItem {
 export interface TokenItem {
     decimals: number
     display_symbol?: string
+    /** could be native token id, for example arb */
     id: string
     is_core: boolean
     is_swap_common?: boolean
@@ -30,23 +85,44 @@ export interface TokenItem {
     price: number
     symbol: string
     time_at: number
+    contract_id: string
+    /** Only NFT */
+    is_erc721: boolean
+    /** Only NFT */
+    is_erc1155: boolean
+    collection?: {
+        chain: DebankChains
+        credit_score: number
+        description: string | null
+        floor_price: number
+        /** e.g. 'matic:0x813de35e46a7d3a6ea1df82414dfadd5b283d9a9' */
+        id: string
+        is_core: boolean
+        is_scam: boolean
+        is_suspicious: boolean
+        is_verified: boolean
+        logo_url: string
+        name: string
+    }
 }
 
 export interface HistoryItem {
     cate_id: keyof HistoryResponse['data']['cate_dict']
     debt_liquidated: null
     id: string
+    chain: DebankChains
     other_addr: string
     project_id?: string
-    receives: AmountTokenPair[]
-    sends: AmountTokenPair[]
+    receives: TransferringAsset[]
+    sends: TransferringAsset[]
     spot_trade?: SpotTrade
     time_at: number
     token_approve?: TokenApprove
     tx?: Record
+    is_scam: boolean
 }
 
-export interface AmountTokenPair {
+export interface TransferringAsset {
     amount: number
     to_addr: string
     token_id: string
@@ -67,7 +143,7 @@ export interface TokenApprove {
 }
 
 export interface Record {
-    eth_gas_fee: number
+    eth_gas_fee?: number
     from_addr: string
     name: string
     // Note: this is JSON string
@@ -75,7 +151,7 @@ export interface Record {
     // Note: 0 - failed, 1 - succeed
     status: 0 | 1
     to_addr: string
-    usd_gas_fee: number
+    usd_gas_fee?: number
     value: number
 }
 
@@ -97,10 +173,10 @@ export interface HistoryRecord {
 
 export interface BalanceRecord {
     balance: number
-    chain: 'eth' | 'bsc' | string
+    chain: DebankChains
     decimals: number
     display_symbol: null
-    id: 'eth' | string
+    id: LiteralUnion<'eth'>
     is_core: boolean
     is_swap_common: boolean
     is_swap_hot: null
@@ -114,11 +190,12 @@ export interface BalanceRecord {
 }
 
 export interface WalletTokenRecord {
-    id: 'eth' | string
+    /** Could be chain or token address */
+    id: LiteralUnion<DebankChains, string>
     amount: string
     is_wallet: boolean
     protocol_id: string
-    chain: 'eth' | 'bsc' | string
+    chain: DebankChains
     decimals: number
     display_symbol: null
     is_core: boolean
@@ -151,6 +228,9 @@ export interface GasPriceRecord {
     price: number
 }
 
+/**
+ * Legacy gas response
+ */
 export interface GasPriceDictResponse {
     data: {
         fast: GasPriceRecord
@@ -160,4 +240,38 @@ export interface GasPriceDictResponse {
     }
     error_code: number
     _seconds: number
+}
+
+export type GasPriceResponse = [
+    {
+        level: 'slow'
+        front_tx_count: number
+        price: number
+        estimated_seconds: number
+    },
+    {
+        level: 'normal'
+        front_tx_count: number
+        price: number
+        estimated_seconds: number
+    },
+    {
+        level: 'fast'
+        front_tx_count: number
+        price: number
+        estimated_seconds: number
+    },
+]
+
+export interface UserTotalBalance {
+    total_usd_value: number
+    chain_list: Array<{
+        id: string
+        community_id: number
+        name: string
+        native_token_id: string
+        logo_url: string
+        wrapped_token_id: string
+        usd_value: number
+    }>
 }

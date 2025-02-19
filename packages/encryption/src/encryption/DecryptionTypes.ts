@@ -125,7 +125,10 @@ export interface DecryptSuccess {
     type: DecryptProgressKind.Success
     content: TypedMessage
 }
-// TODO: rename as DecryptErrorReasons
+export interface DecryptError {
+    type: DecryptProgressKind.Error
+    error: Error
+}
 export enum DecryptErrorReasons {
     PayloadBroken = '[@masknet/encryption] Payload is broken.',
     PayloadDecryptedButTypedMessageBroken = "[@masknet/encryption] Payload decrypted, but it's inner TypedMessage is broken.",
@@ -139,10 +142,7 @@ export enum DecryptErrorReasons {
     CurrentProfileDoesNotConnectedToPersona = '[@masknet/encryption] Cannot decrypt by E2E because no persona is linked with the current profile.',
     NoPayloadFound = '[@masknet/encryption] No payload found in this material.',
 }
-export class DecryptError extends Error {
-    static Reasons = DecryptErrorReasons
-    readonly type = DecryptProgressKind.Error
-    constructor(public override message: DecryptErrorReasons, cause: any, public recoverable = false) {
-        super(message, { cause })
-    }
+/** @internal */
+export function makeDecryptError(message: DecryptErrorReasons, options?: ErrorOptions | undefined): DecryptError {
+    return { type: DecryptProgressKind.Error, error: new Error(message, options) }
 }

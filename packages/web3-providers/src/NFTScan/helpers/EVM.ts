@@ -1,9 +1,6 @@
 import urlcat from 'urlcat'
-import type { AbiItem } from 'web3-utils'
 import { first } from 'lodash-es'
 import { EMPTY_LIST, NetworkPluginID } from '@masknet/shared-base'
-import ERC721ABI from '@masknet/web3-contracts/abis/ERC721.json'
-import type { ERC721 } from '@masknet/web3-contracts/types/ERC721.js'
 import {
     formatPercentage,
     type NonFungibleAsset,
@@ -18,28 +15,25 @@ import {
 } from '@masknet/web3-shared-base'
 import {
     type ChainId,
-    chainResolver,
-    createContract,
     isENSContractAddress,
-    isValidDomain,
     SchemaType,
     WNATIVE,
+    isValidDomain,
+    resolveImageURL,
 } from '@masknet/web3-shared-evm'
+import { EVMChainResolver } from '../../Web3/EVM/apis/ResolverAPI.js'
 import { NFTSCAN_BASE, NFTSCAN_LOGO_BASE, NFTSCAN_URL } from '../constants.js'
-import { Web3API } from '../../Connection/index.js'
 import type { EVM } from '../types/EVM.js'
 import { resolveNFTScanHostName } from './utils.js'
-import { getAssetFullName } from '../../helpers/getAssetFullName.js'
-import { resolveActivityType } from '../../helpers/resolveActivityType.js'
-import { getPaymentToken } from '../../helpers/getPaymentToken.js'
+import { fetchSquashedJSON } from '../../helpers/fetchJSON.js'
 import { parseJSON } from '../../helpers/parseJSON.js'
+import { getAssetFullName } from '../../helpers/getAssetFullName.js'
+import { getPaymentToken } from '../../helpers/getPaymentToken.js'
+import { resolveActivityType } from '../../helpers/resolveActivityType.js'
 import type { NonFungibleTokenAPI } from '../../entry-types.js'
-import { fetchJSON } from '../../entry-helpers.js'
-
-const Web3 = new Web3API()
 
 export async function fetchFromNFTScanV2<T>(chainId: ChainId, pathname: string, init?: RequestInit) {
-    return fetchJSON<T>(urlcat(NFTSCAN_URL, pathname), {
+    return fetchSquashedJSON<T>(urlcat(NFTSCAN_URL, pathname), {
         ...init,
         headers: {
             'content-type': 'application/json',
@@ -48,17 +42,6 @@ export async function fetchFromNFTScanV2<T>(chainId: ChainId, pathname: string, 
         },
         cache: 'no-cache',
     })
-}
-
-export async function getContractSymbol(chainId: ChainId, address: string) {
-    try {
-        const web3 = Web3.getWeb3(chainId)
-        const contract = createContract<ERC721>(web3, address, ERC721ABI as AbiItem[])
-        const symbol = await contract?.methods.symbol().call({})
-        return symbol ?? ''
-    } catch {
-        return ''
-    }
 }
 
 export function createPermalink(chainId: ChainId, address: string, tokenId: string) {
@@ -101,14 +84,18 @@ export function createNonFungibleAsset(
 ): NonFungibleAsset<ChainId, SchemaType> {
     const payload = parseJSON<EVM.Payload>(asset.metadata_json)
     const contractName = asset.contract_name
-    const description = payload?.description ?? collection?.description
-    const uri = asset.nftscan_uri ?? asset.image_uri
+    const description = payload?.description ?? collection?.description ?? ''
+    const uri = asset.imageURL ?? asset.image_uri
     const mediaURL = resolveResourceURL(uri)
 
     const creator = asset.minter
     const owner = asset.owner
     const schema = asset.erc_type === 'erc1155' ? SchemaType.ERC1155 : SchemaType.ERC721
     const symbol = asset.contract_name
+    const name =
+        isValidDomain(asset.name) ?
+            asset.name
+        :   getAssetFullName(asset.contract_address, contractName, payload?.name || asset.name, asset.token_id)
 
     return {
         id: asset.contract_address,
@@ -122,31 +109,31 @@ export function createNonFungibleAsset(
             address: creator,
             link: urlcat(NFTSCAN_BASE, creator),
         },
-        owner: owner
-            ? {
-                  address: owner,
-                  link: urlcat(NFTSCAN_BASE, owner),
-              }
-            : undefined,
+        owner:
+            owner ?
+                {
+                    address: owner,
+                    link: urlcat(NFTSCAN_BASE, owner),
+                }
+            :   undefined,
         traits: getAssetTraits(asset),
-        priceInToken: asset.latest_trade_price
-            ? {
-                  amount: scale10(asset.latest_trade_price, WNATIVE[chainId].decimals).toFixed(),
-                  // FIXME: cannot get payment token
-                  token:
-                      asset.latest_trade_symbol === 'ETH'
-                          ? chainResolver.nativeCurrency(chainId) ?? WNATIVE[chainId]
-                          : WNATIVE[chainId],
-              }
-            : undefined,
+        priceInToken:
+            asset.latest_trade_price ?
+                {
+                    amount: scale10(asset.latest_trade_price, WNATIVE[chainId].decimals).toFixed(),
+                    // FIXME: cannot get payment token
+                    token:
+                        asset.latest_trade_symbol === 'ETH' ?
+                            (EVMChainResolver.nativeCurrency(chainId) ?? WNATIVE[chainId])
+                        :   WNATIVE[chainId],
+                }
+            :   undefined,
         metadata: {
             chainId,
-            name: isValidDomain(asset.name)
-                ? asset.name
-                : getAssetFullName(asset.contract_address, contractName, payload?.name || asset.name, asset.token_id),
+            name,
             symbol,
             description,
-            imageURL: mediaURL,
+            imageURL: resolveImageURL(mediaURL, name, asset.contract_address),
             mediaURL,
         },
         contract: {
@@ -181,11 +168,13 @@ export function createNonFungibleCollectionFromGroup(
     const sample = first(group.assets)
     const payload = parseJSON<EVM.Payload>(sample?.metadata_json)
     return {
+        id: group.contract_address,
         chainId,
         assets: group.assets.map((x) => createNonFungibleAsset(chainId, x)),
         schema: sample?.erc_type === 'erc1155' ? SchemaType.ERC1155 : SchemaType.ERC721,
-        name: group.contract_name,
-        slug: group.contract_name,
+        name: group.contract_name || group.symbol || '',
+        symbol: group.symbol,
+        slug: group.contract_name || '',
         address: group.contract_address,
         description: group.description || payload?.description,
         iconURL: group.logo_url,
@@ -255,12 +244,13 @@ export function createNonFungibleTokenEvent(
         },
         assetName: transaction.contract_name,
         assetPermalink: createPermalink(chainId, transaction.contract_address, transaction.token_id),
-        priceInToken: paymentToken
-            ? {
-                  amount: scale10(transaction.trade_price, paymentToken?.decimals).toFixed(),
-                  token: paymentToken,
-              }
-            : undefined,
+        priceInToken:
+            paymentToken ?
+                {
+                    amount: scale10(transaction.trade_price, paymentToken.decimals).toFixed(),
+                    token: paymentToken,
+                }
+            :   undefined,
         paymentToken,
         source: SourceType.NFTScan,
     }

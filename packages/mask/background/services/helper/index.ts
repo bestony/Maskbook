@@ -1,5 +1,3 @@
-import { fetchGlobal } from '@masknet/web3-providers/helpers'
-
 export { fetchBlob, fetchJSON, fetchText, fetchGlobal } from '@masknet/web3-providers/helpers'
 export { resolveTCOLink } from './short-link-resolver.js'
 export {
@@ -7,14 +5,14 @@ export {
     removePopupWindow,
     openDashboard,
     queryCurrentActiveTab,
-    openPopupConnectWindow,
-    openWalletStartUpWindow,
+    hasPopupWindowOpened,
 } from './popup-opener.js'
 export {
     queryExtensionPermission,
-    requestExtensionPermission,
     hasHostPermission,
-    requestHostPermission,
+    requestExtensionPermissionFromContentScript,
 } from './request-permission.js'
 export { queryRemoteI18NBundle, type Bundle } from './i18n-cache-query.js'
-Reflect.set(globalThis, 'fetch', fetchGlobal)
+export { getTelemetryID, setTelemetryID } from './telemetry-id.js'
+export { fetchSandboxedPluginManifest } from './sandboxed.js'
+export { getActiveTab } from './tabs.js'

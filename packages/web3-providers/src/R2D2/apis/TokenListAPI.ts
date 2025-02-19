@@ -1,21 +1,24 @@
 import { memoize, uniqBy } from 'lodash-es'
 import { memoizePromise } from '@masknet/kit'
 import { EMPTY_LIST } from '@masknet/shared-base'
+import { env } from '@masknet/flags'
 import { type FungibleToken, type NonFungibleToken, TokenType } from '@masknet/web3-shared-base'
-import {
-    ChainId,
-    SchemaType,
-    formatEthereumAddress,
-    chainResolver,
-    getTokenListConstants,
-} from '@masknet/web3-shared-evm'
+import { ChainId, SchemaType, formatEthereumAddress, getTokenListConstants } from '@masknet/web3-shared-evm'
+import { EVMChainResolver } from '../../Web3/EVM/apis/ResolverAPI.js'
+import { Duration } from '../../helpers/fetchCached.js'
+import { fetchCachedJSON } from '../../helpers/fetchJSON.js'
 import type { TokenListAPI } from '../../entry-types.js'
-import { fetchJSON } from '../../entry-helpers.js'
 
 const fetchTokenList = memoizePromise(
     memoize,
     async (url: string) => {
-        return fetchJSON<TokenListAPI.TokenList<ChainId> | TokenListAPI.TokenObject<ChainId>>(url, { cache: 'default' })
+        return fetchCachedJSON<TokenListAPI.TokenList<ChainId> | TokenListAPI.TokenObject<ChainId>>(
+            url,
+            { cache: 'default' },
+            {
+                cacheDuration: Duration.TWELVE_HOURS,
+            },
+        )
     },
     (url) => url,
 )
@@ -33,16 +36,16 @@ async function fetchCommonERC20TokensFromTokenList(
         .filter(
             (x) =>
                 x.chainId === chainId &&
-                (process.env.NODE_ENV === 'production' && process.env.channel === 'stable'
-                    ? chainResolver.isMainnet(chainId)
-                    : true),
+                (process.env.NODE_ENV === 'production' && env.channel === 'stable' ?
+                    EVMChainResolver.isMainnet(chainId)
+                :   true),
         )
         .map((x) => ({
             id: x.address,
             type: TokenType.Fungible,
             schema: SchemaType.ERC20,
             ...x,
-            logoURL: x.logoURI,
+            logoURL: x.originLogoURI || x.logoURI,
         }))
 }
 
@@ -66,7 +69,7 @@ async function fetchERC20TokensFromTokenList(urls: string[], chainId = ChainId.M
  * @param urls
  * @param chainId
  */
-export class R2D2TokenListAPI implements TokenListAPI.Provider<ChainId, SchemaType> {
+class R2D2TokenListAPI implements TokenListAPI.Provider<ChainId, SchemaType> {
     async getFungibleTokenList(chainId: ChainId, urls?: string[]) {
         const { FUNGIBLE_TOKEN_LISTS = EMPTY_LIST } = getTokenListConstants(chainId)
         const result = memoizePromise(
@@ -95,3 +98,5 @@ export class R2D2TokenListAPI implements TokenListAPI.Provider<ChainId, SchemaTy
         return EMPTY_LIST
     }
 }
+
+export const R2D2TokenList = new R2D2TokenListAPI()

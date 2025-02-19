@@ -1,20 +1,19 @@
 import { Button, type ButtonProps, styled } from '@mui/material'
-import { forwardRef } from 'react'
 
 const TabButtonWrap = styled(Button)(({ theme }) => ({
     paddingLeft: theme.spacing(2),
     paddingRight: theme.spacing(2),
     flex: 1,
 }))
-export interface ButtonTabProps extends React.PropsWithChildren<Omit<ButtonProps, 'onChange' | 'value' | 'selected'>> {
+interface ButtonTabProps extends React.PropsWithChildren<Omit<ButtonProps, 'onChange' | 'value' | 'selected'>> {
     value: string
     selected?: boolean
     onChange?(event: object, value: string): void
 }
 /**
- * This is an alternative implementation of Tab component, to use with <ButtonGroupTabList>.
+ * This is an alternative implementation of Tab component.
  */
-export const ButtonTab = forwardRef<HTMLButtonElement, ButtonTabProps>((props, ref) => {
+export function ButtonTab(props: ButtonTabProps) {
     const activated = !!props.selected
     const { onChange, onClick, value } = props
 
@@ -25,7 +24,6 @@ export const ButtonTab = forwardRef<HTMLButtonElement, ButtonTabProps>((props, r
     // TODO: replace secondary to correct theme color
     return (
         <TabButtonWrap
-            ref={ref}
             role="tab"
             {...props}
             disableElevation
@@ -36,4 +34,4 @@ export const ButtonTab = forwardRef<HTMLButtonElement, ButtonTabProps>((props, r
             onChange={undefined}
         />
     )
-})
+}

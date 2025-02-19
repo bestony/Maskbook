@@ -1,4 +1,5 @@
-export * from './locales/index.js'
-export * from './locales/languages.js'
-// DO NOT EXPORT THIS
-// export * from './locales_legacy'
+export * from './locale/languages.js'
+export * from './hooks/index.js'
+export { attachNextIDToProfile } from './utils/attachNextIDToProfile.js'
+export { queryPersistOptions } from './utils/persistOptions.js'
+export { requestPermissionFromExtensionPage } from './utils/permissions.js'

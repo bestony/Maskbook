@@ -1,5 +1,7 @@
+/* eslint-disable react-compiler/react-compiler */
 /* eslint-disable react-hooks/rules-of-hooks */
-import { useRef, forwardRef, useContext } from 'react'
+import { useRef, useContext } from 'react'
+import { Flags } from '@masknet/flags'
 import type { PopperProps } from '@mui/material'
 import {
     DisableShadowRootContext,
@@ -40,7 +42,7 @@ export function usePortalShadowRoot<T>(renderer: (container: HTMLElement | undef
 
         const root = document.createElement('div')
         root.dataset.portalShadowRoot = debugKey || ''
-        const shadow = root.attachShadow({ mode: process.env.shadowRootMode })
+        const shadow = root.attachShadow(Flags.shadowRootInit)
 
         for (const each of preventEventPropagationList) {
             shadow.addEventListener(each, stopPropagation, { signal: signal.current.signal })
@@ -82,9 +84,9 @@ export function createShadowRootForwardedComponent<
         open: boolean
     },
 >(Component: React.ComponentType<T>) {
-    return forwardRef((props: T, ref) => {
-        return usePortalShadowRoot((container) => <Component container={container} {...props} ref={ref} />)
-    }) as any as typeof Component
+    return ((props: T) => {
+        return usePortalShadowRoot((container) => <Component container={container} {...props} />)
+    }) as typeof Component
 }
 
 export function createShadowRootForwardedPopperComponent<
@@ -92,11 +94,11 @@ export function createShadowRootForwardedPopperComponent<
         PopperProps?: Partial<PopperProps>
     },
 >(Component: React.ComponentType<T>) {
-    return forwardRef((props: T, ref) => {
+    return ((props: T) => {
         return usePortalShadowRoot((container) => {
-            return <Component {...props} PopperProps={{ container, ...props.PopperProps }} ref={ref} />
+            return <Component {...props} PopperProps={{ container, ...props.PopperProps }} />
         })
-    }) as any as typeof Component
+    }) as typeof Component
 }
 
 function useRefInit<T>(f: () => T): T {

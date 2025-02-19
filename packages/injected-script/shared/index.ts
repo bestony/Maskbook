@@ -1,18 +1,18 @@
-export const CustomEventId = 'c8a6c18e-f6a3-472a-adf3-5335deb80db6'
+export const CustomEventId = '413f832d-db5c-4779-8d7e-1f7127bd167b'
 export interface InternalEvents {
     /** Simulate a paste event on the activeElement */
     paste: [text: string]
     /** Simulate an image paste event on the activeElement */
-    pasteImage: [number[]]
+    pasteImage: [image: number[]]
     /** Simulate a input event on the activeElement */
     input: [text: string]
     /** Simulate a image upload on the activeElement on instagram */
-    instagramUpload: [url: string]
+    instagramUpload: [image: number[]]
     /**
      * Simulate an image upload event.
      *
      * How to use:
-     * Call this event, then invoke the file selector (SNS). It will invoke click on some input, then let's replace with the result.
+     * Call this event, then invoke the file selector (for now it's instagram). It will invoke click on some input, then let's replace with the result.
      */
     hookInputUploadOnce: [format: string, fileName: string, file: number[], triggerOnActiveElementNow: boolean]
 
@@ -56,20 +56,37 @@ export interface EthereumProvider {
     getProperty(key: string): Promise<boolean | undefined>
 }
 
-export type EventItemBeforeSerialization = keyof InternalEvents extends infer U
-    ? U extends keyof InternalEvents
-        ? readonly [U, InternalEvents[U]]
-        : never
-    : never
+export type EventItemBeforeSerialization =
+    keyof InternalEvents extends infer U ?
+        U extends keyof InternalEvents ?
+            readonly [U, InternalEvents[U]]
+        :   never
+    :   never
 const { parse, stringify } = JSON
 const { isArray } = Array
-export function encodeEvent<T extends keyof InternalEvents>(key: T, args: InternalEvents[T]) {
-    return stringify([key, args])
+const { setPrototypeOf } = Object
+const { String } = globalThis
+export function encodeEvent(key: string, args: unknown[]) {
+    return stringify(setPrototypeOf([key, args], null), function formatter(key: string, value: unknown) {
+        if (value instanceof Uint8Array) return { $type: 'u8[]', value: [...value] }
+        return value
+    })
 }
-export function decodeEvent(data: string): EventItemBeforeSerialization {
-    const result = parse(data)
-    // Do not throw new Error cause it requires a global lookup.
 
+export function decodeEvent(data: unknown) {
+    const result = parse(String(data), function reviver(key: string, value: unknown) {
+        if (
+            typeof value === 'object' &&
+            value &&
+            '$type' in value &&
+            'value' in value &&
+            isArray(value.value) &&
+            value.$type === 'u8[]'
+        )
+            return new Uint8Array(value.value)
+        return value
+    })
+    // Do not throw new Error cause it requires a global lookup.
     if (!isEventItemBeforeSerialization(result)) throw null
     return result
 }

@@ -1,4 +1,4 @@
-import { forwardRef, useRef, memo, useCallback } from 'react'
+import { useRef, memo, useCallback, type RefAttributes } from 'react'
 import { keyframes } from 'tss-react'
 import {
     SnackbarProvider,
@@ -16,7 +16,7 @@ import { Close as CloseIcon, Warning as WarningIcon, Info as InfoIcon } from '@m
 import { Icons } from '@masknet/icons'
 import { makeStyles } from '../../UIHelper/index.js'
 import { MaskColorVar } from '../../CSSVariables/index.js'
-import { usePortalShadowRoot } from '../../entry-base.js'
+import { usePortalShadowRoot } from '../../ShadowRoot/index.js'
 
 export { PopupSnackbarProvider, usePopupCustomSnackbar } from './PopupSnackbar.js'
 export { SnackbarProvider, useSnackbar } from 'notistack'
@@ -26,7 +26,7 @@ export interface StyleProps {
     offsetY?: number
 }
 
-export const useStyles = makeStyles<StyleProps, 'title' | 'message'>()((theme, { offsetY }, classNames) => {
+const useStyles = makeStyles<StyleProps, 'title' | 'message'>()((theme, { offsetY }, classNames) => {
     const spinningAnimationKeyFrames = keyframes`
         to {
           transform: rotate(360deg)
@@ -50,14 +50,17 @@ export const useStyles = makeStyles<StyleProps, 'title' | 'message'>()((theme, {
             display: 'flex',
             alignItems: 'center',
         },
+        '& :focus:not(:focus-visible)': {
+            outline: 0,
+        },
     } as const
     const defaultVariant = {
         background: theme.palette.maskColor.bottom,
         color: theme.palette.maskColor.main,
         boxShadow:
-            theme.palette.mode === 'dark'
-                ? '0px 4px 30px rgba(255, 255, 255, 0.15)'
-                : '0px 4px 30px rgba(0, 0, 0, 0.1)',
+            theme.palette.mode === 'dark' ?
+                '0px 4px 30px rgba(255, 255, 255, 0.15)'
+            :   '0px 4px 30px rgba(0, 0, 0, 0.1)',
         [`& .${classNames.title}`]: {
             color: 'inherit',
         },
@@ -102,9 +105,9 @@ export const useStyles = makeStyles<StyleProps, 'title' | 'message'>()((theme, {
         background: theme.palette.maskColor.primary,
         color: theme.palette.maskColor.white,
         boxShadow:
-            theme.palette.mode === 'dark'
-                ? '0px 4px 30px rgba(255, 255, 255, 0.15)'
-                : '0px 4px 30px rgba(0, 0, 0, 0.1)',
+            theme.palette.mode === 'dark' ?
+                '0px 4px 30px rgba(255, 255, 255, 0.15)'
+            :   '0px 4px 30px rgba(0, 0, 0, 0.1)',
         [`& .${classNames.title}`]: {
             color: 'inherit',
         },
@@ -141,7 +144,7 @@ export const useStyles = makeStyles<StyleProps, 'title' | 'message'>()((theme, {
         },
         content: {
             alignItems: 'center',
-            padding: theme.spacing(1.5, 2),
+            padding: theme.spacing(2),
             borderRadius: 12,
             width: 380,
             flexWrap: 'nowrap !important' as 'nowrap',
@@ -174,13 +177,16 @@ export const useStyles = makeStyles<StyleProps, 'title' | 'message'>()((theme, {
         },
         texts: {
             marginLeft: theme.spacing(1.5),
+            '& :focus:not(:focus-visible)': {
+                outline: 0,
+            },
         },
         title,
         message,
     }
 })
 
-export interface CustomSnackbarContentProps {
+interface CustomSnackbarContentProps extends RefAttributes<HTMLDivElement> {
     id: SnackbarKey
     title: SnackbarMessage
     message?: string | React.ReactNode
@@ -199,11 +205,14 @@ const IconMap: Record<VariantType, React.ReactNode> = {
     info: <InfoIcon color="inherit" />,
 }
 
-export const CustomSnackbarContent = forwardRef<HTMLDivElement, CustomSnackbarContentProps>((props, ref) => {
+function CustomSnackbarContent(props: CustomSnackbarContentProps) {
     const { classes, cx } = useStyles({ offsetY: props.offsetY }, { props })
     const snackbar = useSnackbar()
     const loadingIcon = <Icons.CircleLoading className={classes.spinning} />
-    const variantIcon = props.processing ? loadingIcon : props.variant ? IconMap[props.variant] : null
+    const variantIcon =
+        props.processing ? loadingIcon
+        : props.variant ? IconMap[props.variant]
+        : null
     let renderedAction: React.ReactNode = (
         <IconButton className={classes.closeButton} onClick={() => snackbar.closeSnackbar(props.id)}>
             <CloseIcon />
@@ -213,22 +222,24 @@ export const CustomSnackbarContent = forwardRef<HTMLDivElement, CustomSnackbarCo
         renderedAction = typeof props.action === 'function' ? props.action(props.id) : props.action
     }
     return (
-        <SnackbarContent ref={ref} className={cx(classes.content, classes[props.variant!])}>
-            {variantIcon ? <div className={classes.icon}>{variantIcon}</div> : null}
+        <SnackbarContent ref={props.ref} className={cx(classes.content, classes[props.variant!])}>
+            {variantIcon ?
+                <div className={classes.icon}>{variantIcon}</div>
+            :   null}
             <div className={classes.texts}>
                 <Typography className={classes.title} variant="h2">
                     {props.title}
                 </Typography>
-                {props.message ? (
+                {props.message ?
                     <Typography className={classes.message} variant="body1">
                         {props.message}
                     </Typography>
-                ) : null}
+                :   null}
             </div>
             <div className={classes.action}>{renderedAction}</div>
         </SnackbarContent>
     )
-})
+}
 
 export const CustomSnackbarProvider = memo<
     SnackbarProviderProps & {
@@ -248,12 +259,9 @@ export const CustomSnackbarProvider = memo<
             disableWindowBlurListener
             anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
             hideIconVariant
-            // this is a false positive, SnackbarProvider won't use it like it is a component.
-            // eslint-disable-next-line react/no-unstable-nested-components
             content={(key, title) => (
                 <CustomSnackbarContent id={key} variant={rest.variant ?? 'default'} title={title} offsetY={offsetY} />
             )}
-            // eslint-disable-next-line react/no-unstable-nested-components
             action={(key) => (
                 <IconButton size="large" onClick={onDismiss(key)} sx={{ color: 'inherit' }}>
                     <CloseIcon color="inherit" />

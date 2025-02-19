@@ -1,13 +1,13 @@
 import type { NetworkPluginID } from '@masknet/shared-base'
-import type { Web3Helper } from '@masknet/web3-helpers'
+import type { ConnectionOptions } from '@masknet/web3-providers/types'
 import { useChainContext } from './useContext.js'
-import { useWeb3State } from './useWeb3State.js'
+import { useWeb3Utils } from './useWeb3Utils.js'
 
-export function useMaskTokenAddress<S extends 'all' | void = void, T extends NetworkPluginID = NetworkPluginID>(
+export function useMaskTokenAddress<T extends NetworkPluginID = NetworkPluginID>(
     pluginID?: T,
-    options?: Web3Helper.Web3ConnectionOptionsScope<S, T>,
+    options?: ConnectionOptions<T>,
 ) {
     const { chainId } = useChainContext()
-    const { Others } = useWeb3State(pluginID)
-    return Others?.getMaskTokenAddress?.(options?.chainId ?? chainId)
+    const Utils = useWeb3Utils(pluginID)
+    return Utils?.getMaskTokenAddress?.(options?.chainId ?? chainId)
 }

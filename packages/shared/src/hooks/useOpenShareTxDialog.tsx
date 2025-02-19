@@ -1,12 +1,12 @@
-import { useChainContext } from '@masknet/web3-hooks-base'
-import { makeStyles } from '@masknet/theme'
-import type { NetworkPluginID } from '@masknet/shared-base'
-import { explorerResolver } from '@masknet/web3-shared-evm'
+import { memo, useCallback, type ReactNode } from 'react'
 import { Done as DoneIcon } from '@mui/icons-material'
 import { Link, Typography } from '@mui/material'
-import { type FC, memo, useCallback } from 'react'
-import { useShowConfirm } from '../contexts/common/index.js'
-import { useSharedI18N } from '../locales/index.js'
+import { makeStyles } from '@masknet/theme'
+import { useChainContext } from '@masknet/web3-hooks-base'
+import type { NetworkPluginID } from '@masknet/shared-base'
+import { EVMExplorerResolver } from '@masknet/web3-providers'
+import { ConfirmModal } from '../UI/modals/index.js'
+import { Trans } from '@lingui/react/macro'
 
 const useStyles = makeStyles()((theme) => ({
     content: {
@@ -33,7 +33,7 @@ const useStyles = makeStyles()((theme) => ({
 
 interface ShareTransactionOptions {
     title?: string
-    message?: string
+    message?: ReactNode
     content?: string
     hash: string
     buttonLabel?: string
@@ -43,56 +43,47 @@ interface ShareTransactionOptions {
 
 type ShareTransactionProps = Omit<ShareTransactionOptions, 'title' | 'onShare'>
 
-const ShareTransaction: FC<ShareTransactionProps> = memo(({ message, content, hash }) => {
+const ShareTransaction = memo(({ message, content, hash }: ShareTransactionProps) => {
     const { classes } = useStyles()
-    const t = useSharedI18N()
     const { chainId } = useChainContext<NetworkPluginID.PLUGIN_EVM>()
-    const link = explorerResolver.transactionLink(chainId, hash)
+    const link = EVMExplorerResolver.transactionLink(chainId, hash)
     return (
         <div className={classes.content}>
             <DoneIcon className={classes.icon} />
-            {message ? (
+            {message ?
                 <Typography className={classes.primary} color="textPrimary" variant="subtitle1">
                     {message}
                 </Typography>
-            ) : null}
-            {content ? (
+            :   null}
+            {content ?
                 <Typography className={classes.secondary} color="textSecondary">
                     {content}
                 </Typography>
-            ) : null}
-            {link ? (
+            :   null}
+            {link ?
                 <Typography>
                     <Link className={classes.link} href={link} target="_blank" rel="noopener noreferrer">
-                        {t.share_dialog_view_on_explorer()}
+                        <Trans>View on Explorer</Trans>
                     </Link>
                 </Typography>
-            ) : null}
+            :   null}
         </div>
     )
 })
 
 export function useOpenShareTxDialog() {
-    const showConfirm = useShowConfirm()
-    const t = useSharedI18N()
-
-    return useCallback(
-        ({ title, message, content, hash, buttonLabel, onShare }: ShareTransactionOptions) => {
-            return showConfirm({
-                title: title ?? t.share_dialog_transaction(),
-                content: (
-                    <ShareTransaction
-                        message={message ?? t.share_dialog_transaction_confirmed()}
-                        content={content}
-                        hash={hash}
-                    />
-                ),
-                confirmLabel: onShare ? buttonLabel ?? t.dialog_share() : t.dialog_dismiss(),
-                onSubmit() {
-                    onShare?.()
-                },
-            })
-        },
-        [t, showConfirm],
-    )
+    return useCallback(async ({ title, message, content, hash, buttonLabel, onShare }: ShareTransactionOptions) => {
+        const confirmed = await ConfirmModal.openAndWaitForClose({
+            title: title ?? <Trans>Transaction</Trans>,
+            content: (
+                <ShareTransaction
+                    message={message ?? <Trans>Your transaction has been confirmed!</Trans>}
+                    content={content}
+                    hash={hash}
+                />
+            ),
+            confirmLabel: onShare ? (buttonLabel ?? <Trans>Share</Trans>) : <Trans>Dismiss</Trans>,
+        })
+        if (confirmed) onShare?.()
+    }, [])
 }

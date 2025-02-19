@@ -1,102 +1,71 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useUpdateEffect } from 'react-use'
+import { EMPTY_LIST, type NetworkPluginID } from '@masknet/shared-base'
 import type { Web3Helper } from '@masknet/web3-helpers'
-import { pageableToIterator, flattenAsyncIterator, EMPTY_LIST, type NetworkPluginID } from '@masknet/shared-base'
+import type { HubOptions } from '@masknet/web3-providers/types'
+import { useInfiniteQuery } from '@tanstack/react-query'
+import { useMemo } from 'react'
+import { useBlockedNonFungibleTokens } from './useBlockedNonFungibleTokens.js'
 import { useChainContext } from './useContext.js'
 import { useNetworkDescriptors } from './useNetworkDescriptors.js'
-import { useWeb3State } from './useWeb3State.js'
+import { useWeb3Hub } from './useWeb3Hub.js'
 
-export function useNonFungibleAssets<S extends 'all' | void = void, T extends NetworkPluginID = NetworkPluginID>(
+/**
+ * Blocked tokens would be filtered out
+ */
+export function useNonFungibleAssets<T extends NetworkPluginID = NetworkPluginID>(
     pluginID?: T,
-    schemaType?: Web3Helper.SchemaTypeScope<S, T>,
-    options?: Web3Helper.Web3HubOptionsScope<S, T>,
+    options?: HubOptions<T>,
 ) {
-    const [assets, setAssets] = useState<Array<Web3Helper.NonFungibleAssetScope<S, T>>>(EMPTY_LIST)
-    const [done, setDone] = useState(false)
-    const [loading, toggleLoading] = useState(false)
-    const [error, setError] = useState<string>()
-    const { Hub } = useWeb3State(pluginID)
-    const { account, chainId } = useChainContext({ account: options?.account })
+    const { account, chainId } = useChainContext<T>({ account: options?.account })
+    const Hub = useWeb3Hub(pluginID, { account, chainId, ...options } as HubOptions<T>)
     const networks = useNetworkDescriptors(pluginID)
+    const availableChainIds = useMemo(() => {
+        return networks
+            .filter((x) => x.isMainnet && (options?.chainId ? x.chainId === options.chainId : true))
+            .map((x) => x.chainId)
+    }, [networks, options?.chainId])
 
-    // create iterator
-    const iterator = useMemo(() => {
-        const hub = Hub?.getHub?.({ account, chainId, ...options })
-        if (!account || !hub?.getNonFungibleAssets || !networks) return
-        setAssets(EMPTY_LIST)
-        setDone(false)
-
-        return flattenAsyncIterator(
-            networks
-                .filter((x) => x.isMainnet && (options?.chainId ? x.chainId === options.chainId : true))
-                .map((x) => {
-                    return pageableToIterator(async (indicator) => {
-                        return hub.getNonFungibleAssets!(account, {
-                            indicator,
-                            size: 50,
-                            ...options,
-                            chainId: x.chainId,
-                        })
+    const blockedTokens = useBlockedNonFungibleTokens()
+    const blockedTokenIds = useMemo(() => {
+        return blockedTokens.filter((x) => availableChainIds.includes(x.chainId)).map((x) => x.id)
+    }, [blockedTokens, availableChainIds])
+    return useInfiniteQuery({
+        // eslint-disable-next-line @tanstack/query/exhaustive-deps
+        queryKey: ['non-fungible-assets', account, availableChainIds, blockedTokenIds],
+        initialPageParam: undefined as
+            | {
+                  indicator?: any
+                  chainId?: Web3Helper.ChainIdAll
+              }
+            | undefined,
+        queryFn: async ({ pageParam }) => {
+            const chainId = pageParam?.chainId || availableChainIds[0]
+            const res = await Hub.getNonFungibleAssets!(account, {
+                indicator: pageParam?.indicator,
+                size: 20,
+                chainId,
+            })
+            const data =
+                blockedTokenIds.length ?
+                    res.data.filter((x) => {
+                        const id = `${x.chainId}.${x.address}.${x.tokenId}`.toLowerCase()
+                        return !blockedTokenIds.includes(id)
                     })
-                }),
-        )
-    }, [Hub, account, JSON.stringify(options), networks.length, chainId])
-
-    const next = useCallback(async () => {
-        if (!iterator || done) return
-        setError(undefined)
-        toggleLoading(true)
-        const batchResult: Array<Web3Helper.NonFungibleAssetScope<S, T>> = []
-        try {
-            for (const _ of Array.from({ length: options?.size ?? 36 })) {
-                const { value, done: iteratorDone } = await iterator.next()
-                if (value instanceof Error) {
-                    // Controlled error
-                    setError(value.message)
-                    break
-                } else {
-                    if (iteratorDone) {
-                        setDone(true)
-                        break
-                    }
-                    if (!iteratorDone && value) {
-                        batchResult.push(value)
-                    }
-                }
+                :   res.data
+            return {
+                ...res,
+                data,
+                chainId,
             }
-        } catch (error_) {
-            // Uncontrolled error
-            setError(error_ as string)
-            setDone(true)
-        }
-        setAssets((pred) => {
-            return [...pred, ...batchResult]
-        })
-        toggleLoading(false)
-    }, [iterator, done])
-
-    // Execute once after next update
-    useEffect(() => {
-        if (next) next()
-    }, [next])
-
-    // clear assets after account updated
-    useUpdateEffect(() => {
-        setAssets([])
-    }, [account])
-
-    const retry = useCallback(() => {
-        setError(undefined)
-        setAssets(EMPTY_LIST)
-        setDone(false)
-    }, [])
-
-    return {
-        value: assets.filter((x) => (options?.chainId ? x.chainId === options?.chainId : true)),
-        next,
-        loading,
-        done,
-        retry,
-        error,
-    }
+        },
+        getNextPageParam: (lastPage) => {
+            const { nextIndicator, chainId } = lastPage
+            const nextChainId = nextIndicator ? chainId : availableChainIds[availableChainIds.indexOf(chainId) + 1]
+            if (!nextChainId) return
+            return {
+                indicator: nextIndicator,
+                chainId: nextChainId,
+            }
+        },
+        select: (data) => data.pages.flatMap((x) => x.data) || EMPTY_LIST,
+    })
 }

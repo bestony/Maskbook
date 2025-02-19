@@ -3,14 +3,21 @@ import { omit } from 'lodash-es'
 import type { ChainId, UserOperation } from '@masknet/web3-shared-evm'
 import { toBase64, fromHex } from '@masknet/shared-base'
 import { BUNDLER_PROD } from '../constants.js'
-import type { BundlerAPI } from '../../types/Bundler.js'
-import { fetchJSON } from '../../entry-helpers.js'
+import type { BundlerAPI } from '../../entry-types.js'
+import { Duration } from '../../helpers/fetchCached.js'
+import { fetchCachedJSON, fetchJSON } from '../../helpers/fetchJSON.js'
 
-export class SmartPayBundlerAPI implements BundlerAPI.Provider {
+class SmartPayBundlerAPI implements BundlerAPI.Provider {
     private healthz() {
-        return fetchJSON<BundlerAPI.Healthz>(urlcat(BUNDLER_PROD, '/healthz'), {
-            method: 'GET',
-        })
+        return fetchCachedJSON<BundlerAPI.Healthz>(
+            urlcat(BUNDLER_PROD, '/healthz'),
+            {
+                method: 'GET',
+            },
+            {
+                cacheDuration: Duration.TWELVE_HOURS,
+            },
+        )
     }
 
     private async handle(userOperation: UserOperation) {
@@ -72,14 +79,9 @@ export class SmartPayBundlerAPI implements BundlerAPI.Provider {
         const healthz = await this.healthz()
         return [healthz.entrypoint_contract_address]
     }
-    simulateUserOperation(
-        chainId: ChainId,
-        userOperation: UserOperation,
-    ): Promise<{ preOpGas: string; prefund: string }> {
-        throw new Error('Method not implemented.')
-    }
     async sendUserOperation(chainId: ChainId, userOperation: UserOperation): Promise<string> {
         await this.assetChainId(chainId)
         return this.handle(userOperation)
     }
 }
+export const SmartPayBundler = new SmartPayBundlerAPI()

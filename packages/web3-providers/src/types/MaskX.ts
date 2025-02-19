@@ -1,14 +1,19 @@
-export namespace MaskX_BaseAPI {
+export namespace BaseMaskX {
     export enum PlatformType {
         Ethereum = 'eth',
         Twitter = 'twitter',
     }
 
     export enum SourceType {
-        CyberConnect = 'cyberconnect',
+        CyberConnect = 'cyber',
+        Firefly = 'firefly',
+        OpenSea = 'opensea',
         Sybil = 'sybil',
+        Uniswap = 'uniswap',
         Leaderboard = 'ethLeaderboard',
         RSS3 = 'rss3',
+        HandWriting = 'hand_writing',
+        TwitterHexagon = 'twitter_hexagon',
     }
 
     export interface Identity {
@@ -22,10 +27,11 @@ export namespace MaskX_BaseAPI {
         // data source
         source: SourceType
         ens?: string
-        // a js like timestamp
+        // timestamp in milliseconds
         create_timestamp: string
-        // a js like timestamp
+        // timestamp in milliseconds
         modify_timestamp: string
+        is_verified: boolean
     }
 
     export interface Options {
@@ -39,14 +45,5 @@ export namespace MaskX_BaseAPI {
             next: number
         }
         records: Identity[]
-    }
-
-    export interface Provider {
-        /** Get identities by precisely matching the identity id. */
-        getIdentitiesExact(handle: string, platform: PlatformType, options?: Options): Promise<Response>
-        /** Get identities by fuzzy searching the identity id. */
-        getIdentitiesFuzzy(handle: string, platform: PlatformType, options?: Options): Promise<Response>
-        /** Get all included identities. */
-        getAllIdentities(options?: Options): Promise<Response>
     }
 }

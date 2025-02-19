@@ -1,11 +1,12 @@
 import {
-    appearanceSettings,
-    telemetrySettings,
-    pluginIDSettings,
+    pluginIDsSettings,
+    type MaskSettingsEvents,
+    type ValueRefWithReady,
     languageSettings,
     currentPersonaIdentifier,
-} from './settings.js'
-import type { MaskSettingsEvents, ValueRefWithReady } from '@masknet/shared-base'
+    appearanceSettings,
+} from '@masknet/shared-base'
+import { telemetrySettings } from '@masknet/web3-telemetry'
 
 type ToBeListedSettings = {
     [key in keyof MaskSettingsEvents]: ValueRefWithReady<MaskSettingsEvents[key]>
@@ -14,7 +15,7 @@ export function ToBeListened(): ToBeListedSettings {
     return {
         telemetrySettings,
         appearanceSettings,
-        pluginIDSettings,
+        pluginIDSettings: pluginIDsSettings,
         languageSettings,
         currentPersonaIdentifier,
     }

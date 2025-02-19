@@ -1,11 +1,11 @@
-import type { HubOptions } from '@masknet/web3-shared-base'
+import type { BaseHubOptions } from '../entry-types.js'
 
 export namespace PriceAPI {
     export interface Provider<ChainId> {
         getFungibleTokenPrice?: (
             chainId: ChainId,
             account: string,
-            options?: HubOptions<ChainId>,
+            options?: BaseHubOptions<ChainId>,
         ) => Promise<number | undefined>
     }
 }

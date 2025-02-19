@@ -1,5 +1,5 @@
-import { memo, useContext, useEffect, useState } from 'react'
-import type { TypedMessageImage } from '@masknet/typed-message'
+import { memo, useContext, useState } from 'react'
+import { unstable_STYLE_META, type TypedMessageImage } from '@masknet/typed-message'
 import { useMetadataRender } from '../MetadataRender.js'
 import { RenderFragmentsContext, DefaultRenderFragments } from '../utils/RenderFragments.js'
 
@@ -8,15 +8,17 @@ export const TypedMessageImageRender = memo(function TypedMessageImageRender(pro
     const { image, width, height } = props
     const [blobSrc, setBlobSrc] = useState<string | null>(null)
 
-    useEffect(() => {
-        if (typeof image === 'string') return
-        const src = URL.createObjectURL(image)
-        setBlobSrc(src)
-        return () => {
-            setBlobSrc(null)
-            URL.revokeObjectURL(src)
+    {
+        const [oldImage, setOldImage] = useState(image)
+        if (oldImage !== image) {
+            blobSrc && URL.revokeObjectURL(blobSrc)
+            setOldImage(image)
+            if (typeof image !== 'string') {
+                const src = URL.createObjectURL(image)
+                setBlobSrc(src)
+            }
         }
-    }, [image])
+    }
 
     const meta = useMetadataRender(props)
     const finalSrc = blobSrc || image
@@ -24,7 +26,13 @@ export const TypedMessageImageRender = memo(function TypedMessageImageRender(pro
 
     return (
         <>
-            <Image src={finalSrc} width={width} height={height} />
+            <Image
+                style={Object(props.meta?.get(unstable_STYLE_META))}
+                src={finalSrc}
+                width={width}
+                height={height}
+                meta={props.meta}
+            />
             {meta}
         </>
     )

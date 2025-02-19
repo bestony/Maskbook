@@ -6,6 +6,8 @@ export interface FT {
     symbol: string
     decimals: number
     balance: string
+    current_usd_price: number
+    logos: Array<{ height: number; width: number; uri: string }>
 }
 
 export interface FT_Price {
@@ -13,14 +15,6 @@ export interface FT_Price {
     symbol: string
     source: string
     updated_at: string
-}
-
-export interface FT_Metadata {
-    contract_address: string
-    name: string
-    symbol: string
-    decimals: string
-    total_supply: string
 }
 
 export interface NFT {
@@ -44,7 +38,7 @@ export interface NFT_Metadata {
 }
 
 export interface NFT_TransferEvent {
-    // e.g., 2022-01-22T04:53:39Z
+    /** e.g., 2022-05-17T20:41:19Z */
     block_timestamp: string
     block_number: number
     transaction_hash: string
@@ -62,16 +56,18 @@ export interface NFT_FloorPrice {
     floor_price: number
     symbol: 'eth' | Omit<string, 'eth'>
     source: 'opensea' | Omit<string, 'opensea'>
-    // e.g., 2022-05-18T07:44:18Z
+    /** e.g., 2022-05-17T20:41:19Z */
     updated_at: string
 }
 
+/** 0 is fail, 1 is succeed */
+export type TxStatus = 0 | 1
 export interface Tx {
     chain_id: ChainId
-    type: 0
-    status: 0 | 1
+    type: 0 | 2
+    status: TxStatus
     block_number: string
-    // e.g., 2022-05-17T20:41:19Z
+    /** e.g., 2022-05-17T20:41:19Z */
     block_timestamp: string
     transaction_hash: string
     transaction_index: number
@@ -88,6 +84,9 @@ export interface Tx {
     cumulative_gas_used: number
     max_fee_per_gas: number
     max_priority_fee_per_gas: number
+    saving_fee: number
+    burnt_fee: number
+    tx_fee: number
 }
 
 export interface ENSRecord {
